@@ -1,0 +1,11 @@
+BUG FIXES
+
+Fixed: Make trigger message do rainbow mapping
+
+Map analog values to linear distance
+Go to no color and stay on action
+Only allow one ACTION at the time (recording or copying)
+Fixed: Only one copying at the time
+New message type for setting color. implement setmycolor reception ? + affectedcube + rainbowbyte
+Fixed: Not requesting new copy when copying is finished
+Fixed: start sequence after copying done
