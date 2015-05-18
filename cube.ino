@@ -27,6 +27,7 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 // int currentRecordingCube;
 
 const int piezoThreshold = 200;
+const int dimScaleFactor = 2;
 
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = pin number (most are valid)
@@ -41,10 +42,10 @@ Cube_class cubes[] = {
       //(cubeNumber, ir, piezo, reed, reed, ledPin, threshold,) invertedTilt, stripOffset
   
   
-  Cube_class(0, A8, A0, 2, 3, 46, 280),
-  Cube_class(1, A9, A1, 4, 5, 47, 280),
-  Cube_class(2, A10, A2, 6, 7, 48, 280),
-  Cube_class(3, A11, A3, 8, 9, 49, 280),
+  Cube_class(0, A8, A0, 2, 3, 46, 55),
+  Cube_class(1, A9, A1, 4, 5, 47, 55),
+  Cube_class(2, A10, A2, 6, 7, 48, 55),
+  Cube_class(3, A11, A3, 8, 9, 49, 55),
   // Cube_class(3, A3, 14, 15, 16, 24, 60),
   // Cube_class(4, A4, 26, 24, 22, 32, 60),
   // Cube_class(5, A5, 27, 25, 23, 40, 60),
@@ -72,10 +73,11 @@ void setup() {
 
   //TODO: implement handshake here
   if(!DIAGNOSIS){
-    establishContact();///////////////////////////////////////////////////////////////MUCH SHIT HERE!!!!!! WILL IT WORK?????????????????????
+    // establishContact();
+    sendMessage("Starting arduino sketch of DOOM!");
     
   }else{
-    delay(2000);
+    // delay(2000);
     printNeighbours();
    // showCalibrationValues();
   }
@@ -105,10 +107,6 @@ void loop() {
   if(Serial.available()>= 2){
     if(Serial.read() == '#'){
       uint8_t newLine;
-    // uint8_t affectedCube = inByte & 0x0F; ///1000 0001 Would mean set cube color on cube 8
-    // uint8_t command = inByte >> 4;
-      Serial.println("Command received");
-
       uint8_t command = readChar();
       uint8_t affectedCube = readChar();
       if(command == '/'){//Setcubecolor
@@ -123,8 +121,9 @@ void loop() {
           r = (uint8_t)(color >> 16),
           g = (uint8_t)(color >>  8),
           b = (uint8_t)color;
-          cubes[affectedCube].setMyColor(r/6, g/6, b/6);
-          Serial.print("Cube triggered "); Serial.println(affectedCube);
+          cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
+          cubes[affectedCube].triggerStamp = millis();
+          // Serial.print("Cube triggered "); Serial.println(affectedCube);
         }
       }else if(command == 92){//Cubeoffverified
         // delay(6);
@@ -132,7 +131,7 @@ void loop() {
         if(newLine == '\n'){
           cubes[affectedCube].cubeOffVerified = true;
           cubes[affectedCube].setMyColor(0, 0, 0);
-          Serial.print("cubeOffVerified "); Serial.println(affectedCube);
+          // Serial.print("cubeOffVerified "); Serial.println(affectedCube);
         }
       }else if(command == '['){//Recording started
         newLine = readChar();
@@ -142,7 +141,7 @@ void loop() {
           cubes[affectedCube].isRecording = true; 
           // Cube_class::sharedIsRecording = true;    
           cubes[affectedCube].recordStamp = millis();
-          Serial.print("recording started on cube "); Serial.println(affectedCube);
+          // Serial.print("recording started on cube "); Serial.println(affectedCube);
         }
       }else if(command == ']'){//Recording finished
         newLine = readChar();
@@ -151,7 +150,7 @@ void loop() {
           // Cube_class::sharedIsRecording = false;   
           cubes[affectedCube].setCubeColor(0,255,0); 
           Cube_class::someCubeIsBusy = false; 
-          Serial.print("recording finished on cube "); Serial.println(affectedCube);
+          // Serial.print("recording finished on cube "); Serial.println(affectedCube);
         }
       }else if(command == '!'){//Recording timeout
         newLine = readChar();
@@ -161,7 +160,7 @@ void loop() {
           cubes[affectedCube].isRecording = false;//Just in case!!
           Cube_class::someCubeIsBusy = false;
           // Cube_class::sharedIsRecording = false; 
-          Serial.print("recording timeout on cube "); Serial.println(affectedCube);
+          // Serial.print("recording timeout on cube "); Serial.println(affectedCube);
         }
       }else if(command == '*'){//Copying confirmed
         uint8_t affectedCube2 = readChar();
@@ -172,12 +171,31 @@ void loop() {
           cubes[affectedCube].setCopyingState(COPYINGCONFIRMED);
           cubes[affectedCube2].setCopyingState(COPYINGCONFIRMED);
           cubes[affectedCube2].recordStamp = millis(); //Update the stamp of the receiving cube
-          Serial.print("copying finished: "); Serial.print(affectedCube); Serial.println(affectedCube2);
+          // Serial.print("copying finished: "); Serial.print(affectedCube); Serial.println(affectedCube2);
         }
         // sendStartRequest();
+      }else if(command == '?'){//Copying confirmed
+        // delay(6);
+        uint8_t effect = readChar();
+        newLine = readChar();
+        if(newLine == '\n'){
+          uint32_t color = Wheel(effect);
+          //Depack the colors
+          int
+          r = (uint8_t)(color >> 16),
+          g = (uint8_t)(color >>  8),
+          b = (uint8_t)color;
+          cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
+          // cubes[affectedCube].setCubeColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
+          // Serial.print("Pitch color set for cube "); Serial.println(affectedCube);
+        }
+      }else if(command == 't'){
+        newLine == readChar();
+          if(affectedCube == 'a' || affectedCube == 'A'){
+            sendMessage("a");
+          }
       }
     }
-
   }
 
   //Continuously dim the leds
@@ -211,11 +229,18 @@ void loop() {
 void readCube(int i){
 
   if(ACTIVATE_IR){
-    if(cubes[i].irTriggered() && !Cube_class::someCubeIsBusy){
-      cubes[i].cubeOffVerified = false;
-      sendTrigger(i, convertToByte(cubes[i].irValue, 0, 1023));
-    }else if(!cubes[i].cubeOffVerified){
-      sendTurnOffCube(i);
+    if(millis() - cubes[i].lastIrMessage > 10 && millis() - cubes[i].triggerStamp > 400){
+      if(i == 0){
+        sendMessage(String(cubes[i].irValue));
+      }
+      if(cubes[i].irTriggered() && !Cube_class::someCubeIsBusy){
+        cubes[i].lastIrMessage = millis();
+        cubes[i].cubeOffVerified = false;
+        sendTrigger(i, convertToByte(cubes[i].irValue, 15, 55));
+      }else if(!cubes[i].cubeOffVerified){
+        cubes[i].lastIrMessage = millis();
+        sendTurnOffCube(i);
+      }
     }
   }
 
@@ -448,7 +473,7 @@ void touchAnimation(int sourceCube, int destinationCube){
   }else if(sourceCube - GRID_SIZE_X == destinationCube){
     direction = UP;
   }else{
-    sendMessage(String("Something's wrongs with the touchanimation. Check Arduino code"));
+    sendMessage("Something's wrongs with the touchanimation. Check Arduino code");
     return;
   }
 
