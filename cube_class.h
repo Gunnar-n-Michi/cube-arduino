@@ -34,6 +34,8 @@ public:
 	int irValue;
 	unsigned long recordStamp;
 	unsigned long lastIrRead;
+	unsigned long lastIrMessage;
+	unsigned long triggerStamp;
 
 	static bool sharedIsWaitingToRecord;
 	static bool sharedIsRecording;
@@ -67,6 +69,8 @@ public:
 
 		recordStamp = millis();
 		lastIrRead = millis();
+		lastIrMessage = millis();
+		triggerStamp = millis();
 
 		cubeOffVerified = true;
 		isWaitingToRecord = false;
@@ -140,13 +144,22 @@ public:
 	// }
 
 	bool irTriggered(){
-		if(millis()-lastIrRead > 0){
+		// if(millis()-lastIrRead > 0){
 			lastIrRead = millis();
 
 			_total -= _irReadings[_irIndex];
 			analogRead(_irPin);
 			delayMicroseconds(50);
-			_irReadings[_irIndex] = analogRead(_irPin);
+			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
+			int value = analogRead(_irPin);
+			_irReadings[_irIndex] = 0.00004106960272 *value*value - 0.1409362699 * value + 79.87598879;
+			// 6.673596372·10-5 x2 - 1.592576997·10-1 x + 82.88834375
+			
+			////TESTCODE
+			// if(_cubeNumber == 0){
+			// 	Serial.println(_irReadings[_irIndex]);
+			// }
+			//*****************
 			_total += _irReadings[_irIndex];
 			_irIndex++;
 
@@ -154,11 +167,11 @@ public:
 				_irIndex = 0;
 
 			irValue = _total/SMOOTHINGSIZE;
-			if(irValue > _threshold){
+			if(irValue < _threshold){
 				return true;
 			}
 			return false;
-		}
+		// }
 	}
 
 	#define REED_IDLE 0
