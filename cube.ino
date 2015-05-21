@@ -6,17 +6,18 @@
 ///DIAGNOSIS or ACTIVATE_IR
 #define DIAGNOSIS false
 #define ACTIVATE_IR true
+#define SET_AMP_MODE false
 #define DEBUG
 
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////DON*T FORGET TO SET GRID SIZES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #define GRID_SIZE_X 2
-#define GRID_SIZE_Y 2
-#define UP    0
-#define RIGHT 1
-#define DOWN  2
-#define LEFT  3
+#define GRID_SIZE_Y 3
+#define UP    2
+#define RIGHT 3
+#define DOWN  0
+#define LEFT  1
 
 #include <Adafruit_NeoPixel.h>//Order matters here. Since the arduino IDE (1.0.6) doesn't allow including libraries in libraries we have to include the neopixels here, before the cube_class.
 #include "cube_class.h"
@@ -27,7 +28,7 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 // int currentRecordingCube;
 
 const int piezoThreshold = 200;
-const int dimScaleFactor = 2;
+const int dimScaleFactor = 4;
 
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = pin number (most are valid)
@@ -39,18 +40,17 @@ const int dimScaleFactor = 2;
 // Adafruit_NeoPixel strip = Adafruit_NeoPixel(NUMBEROFPIXELS, STRIP_PIN, NEO_GRB + NEO_KHZ800);
 
 Cube_class cubes[] = {
-      //(cubeNumber, ir, piezo, reed, reed, ledPin, threshold,) invertedTilt, stripOffset
+      //(cubeNumber, ir, piezo, reed, reed, ledPin, tiltSwitch, IRthreshold,) invertedTilt, stripOffset
   
   
-  Cube_class(0, A8, A0, 2, 3, 46, 55),
-  Cube_class(1, A9, A1, 4, 5, 47, 55),
-  Cube_class(2, A10, A2, 6, 7, 48, 55),
-  Cube_class(3, A11, A3, 8, 9, 49, 55),
-  // Cube_class(3, A3, 14, 15, 16, 24, 60),
-  // Cube_class(4, A4, 26, 24, 22, 32, 60),
+  Cube_class(0, A8, A0, 2, 3, 46, 22, 55),
+  Cube_class(1, A9, A1, 4, 5, 47, 23, 55),
+  Cube_class(2, A10, A2, 6, 7, 48, 24, 55),
+  Cube_class(3, A11, A3, 8, 9, 49, 25, 55),
+  Cube_class(4, A12, A4, 10, 11, 50, 26, 55),
+  Cube_class(5, A13, A5, 12, 13, 51, 27, 55),
   // Cube_class(5, A5, 27, 25, 23, 40, 60),
-  // Cube_class(6, A6, 32, 30, 28, 48, 60, true),
-  // Cube_class(7, A7, 33, 29, 31, 56, 60, false, 6)
+  // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
 };
 
 //DELETE LATER! When not needed
@@ -69,12 +69,13 @@ void setup() {
   for (int i = 0; i < NUMBEROFCUBES; ++i)
   {
     cubes[i].init();
+    cubes[i].setupPiezoSensitivity();
   }
 
   //TODO: implement handshake here
   if(!DIAGNOSIS){
     // establishContact();
-    sendMessage("Starting arduino sketch of DOOM!");
+    sendMessage(F("Starting arduino sketch of DOOM!"));
     
   }else{
     // delay(2000);
@@ -100,16 +101,17 @@ void establishContact() {
   // setCubeColor(0, 0,0,0);
 }
 
-void loop() {
-  digitalWrite(13, ledState);
-
-  //Have we received any stuff?????? If so, do cool shit!
+void handleSerial(){
+    //Have we received any stuff?????? If so, do cool shit!
   if(Serial.available()>= 2){
     if(Serial.read() == '#'){
       uint8_t newLine;
       uint8_t command = readChar();
       uint8_t affectedCube = readChar();
-      if(command == '/'){//Setcubecolor
+      if(command == '/'){//Trigger cube
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
+          return;
+        }
         // delay(6);
         uint8_t effect = readChar();
         newLine = readChar();
@@ -174,8 +176,11 @@ void loop() {
           // Serial.print("copying finished: "); Serial.print(affectedCube); Serial.println(affectedCube2);
         }
         // sendStartRequest();
-      }else if(command == '?'){//Copying confirmed
+      }else if(command == '?'){//Setting color
         // delay(6);
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
+          return;
+        }
         uint8_t effect = readChar();
         newLine = readChar();
         if(newLine == '\n'){
@@ -197,10 +202,21 @@ void loop() {
       }
     }
   }
+}
+
+void loop() {
+  if(SET_AMP_MODE){
+    set_amp();
+  }
+  digitalWrite(13, ledState);
+
+  handleSerial();
+
+
 
   //Continuously dim the leds
   for(int i = 0; i<NUMBEROFCUBES; i++){
-    cubes[i].fadeToMyColor(128);
+    cubes[i].fadeToMyColor(64);
     cubes[i].strip.show();
   }
 
@@ -229,10 +245,12 @@ void loop() {
 void readCube(int i){
 
   if(ACTIVATE_IR){
-    if(millis() - cubes[i].lastIrMessage > 10 && millis() - cubes[i].triggerStamp > 400){
-      if(i == 0){
-        sendMessage(String(cubes[i].irValue));
-      }
+    if(!Cube_class::someCubeIsBusy 
+      && millis() - cubes[i].lastIrMessage > 5 
+      && millis() - cubes[i].triggerStamp > 300){
+      // if(i == 0){
+      //   sendMessage(String(cubes[i].irValue));
+      // }
       if(cubes[i].irTriggered() && !Cube_class::someCubeIsBusy){
         cubes[i].lastIrMessage = millis();
         cubes[i].cubeOffVerified = false;
@@ -262,9 +280,9 @@ void readCube(int i){
 
   for(int j = 0; j < 2; j++){
     int direction;
-    if(j == 0){direction = RIGHT;}else{direction = UP;} // Set direction for current reed.
+    if(j == 0){direction = LEFT;}else{direction = UP;} // Set direction for current reed.
     int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-    if(!getCopyPair(pair, i, direction)){//We should never handle the reeds on the edges
+    if(!getCopyPair(pair, i, direction)){//Retrieve the pair. Also, We should never handle the reeds on the edges. Hence the if statement.
       if(cubes[i].getReedState(j) == REED_TOUCHING){//Just some test code to visualize when edge reed is triggered
         cubes[i].setCubeColor(150,150,150);
       }
@@ -278,13 +296,7 @@ void readCube(int i){
       //   msg += String(pair[0]) + ", " + String(pair[1]) + ", j is " + String(j);
       //   sendMessage(msg);
       // }
-      continue;
-    }else{
-      // if(cubes[i].getReedState(j)){
-      //   String msg = "Retrieved pair is: ";
-      //   msg += String(pair[0]) + ", " + String(pair[1]);
-      //   sendMessage(msg);
-      // }
+      continue; //Jump to next loop iteration if this is an edge reed
     }
 
 
@@ -307,6 +319,7 @@ void readCube(int i){
           turnOffAllCubes(); // fade out all cubes when sequence is not running
           sendCopyRequest(pair[0], pair[1]);//This function also changes the state of the cubes after the message is sent
         }else if(cubes[pair[0]].getCopyingState() == AWAITINGCONFIRMATION && cubes[pair[1]].getCopyingState() == AWAITINGCONFIRMATION){
+          turnOffAllCubes(); // fade out all cubes when sequence is not running
           touchAnimation(pair[0], pair[1]);
         }else if(cubes[pair[0]].getCopyingState() == COPYINGCONFIRMED && cubes[pair[1]].getCopyingState() == COPYINGCONFIRMED){
           cubes[pair[0]].setCubeColor(0, 255, 0);
@@ -314,6 +327,7 @@ void readCube(int i){
         }
       }break;
       case REED_FALLING:{
+        turnOffAllCubes(); // fade out all cubes when sequence is not running
         // if(reed1 == REED_IDLE && reed2 == REED_IDLE){
         // }
       }break;
@@ -355,7 +369,7 @@ void readCube(int i){
 
   //Piezo stuff
   if(/// In some cases we don't want to rercord even if it's triggered.
-      cubes[i].piezoTriggered(piezoThreshold) 
+      (cubes[i].piezoTriggered(piezoThreshold) || cubes[i].shaking())
       && !cubes[i].isWaitingToRecord 
       && !cubes[i].isRecording
       && !cubes[i].getReedState(0)//provide against false tap trigger when touching two cubes.
@@ -383,7 +397,7 @@ void readCube(int i){
 
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
-      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].irValue, 200, 700)));
+      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].irValue, 15, 55)));
       Serial.print("ir on ");
       Serial.print(i);
       Serial.print(" is triggered with a value of");
@@ -405,6 +419,19 @@ void cubeDiagnosis(int i){
         Serial.print(" but reed switch was active");
       }
       Serial.println();
+    }
+
+    // if(cubes[i].shaking()){
+    //   cubes[i].setCubeColor(0,255,255);
+
+    //   Serial.print("Cube ");
+    //   Serial.print(i);
+    //   Serial.print(" is shaking");
+    //   Serial.println();
+    // }
+
+    if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
+      cubes[i].setCubeColor(255,0,255); //White if tapped
     }
 
     cubes[i].updateReedStates();
@@ -453,7 +480,7 @@ void printNeighbours(){
     Serial.print(neighbours[3]);
     Serial.println();
   }
-  Serial.println("******************");
+  Serial.println(F("******************"));
 }
 
 void touchAnimation(int sourceCube, int destinationCube){
@@ -473,7 +500,7 @@ void touchAnimation(int sourceCube, int destinationCube){
   }else if(sourceCube - GRID_SIZE_X == destinationCube){
     direction = UP;
   }else{
-    sendMessage("Something's wrongs with the touchanimation. Check Arduino code");
+    sendMessage(F("Something's wrongs with the touchanimation. Check Arduino code"));
     return;
   }
 
@@ -683,5 +710,30 @@ uint32_t Wheel(byte WheelPos) {
   } else {
    WheelPos -= 170;
    return Adafruit_NeoPixel::Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+  }
+}
+
+void set_amp(){
+  Serial.println("Running amplification setup procedure.");
+  while(true){
+    for(int i = 0; i < NUMBEROFCUBES; i++){
+      int value = cubes[i].readPiezo();
+      if(value > 500){
+        cubes[i].setCubeColor(255,255,255);
+      }else if(value > 400){
+        cubes[i].setCubeColor(255,255,0);
+      }else if(value > 300){
+        cubes[i].setCubeColor(255,0,255);
+      }else if(value > 200){
+        cubes[i].setCubeColor(0,0,255);
+      }else if(value > 100){
+        cubes[i].setCubeColor(0,255,0);
+      }else if(value > 50){
+        cubes[i].setCubeColor(255,0,0);
+      }else{
+        cubes[i].setCubeColor(0,0,0);
+      }
+      cubes[i].strip.show();
+    }
   }
 }

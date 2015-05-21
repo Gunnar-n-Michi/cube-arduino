@@ -17,12 +17,12 @@ private:
 	bool _invertedTiltSwitch;
 	int _stripOffset;
 	int _firstPixel;
-	// int _piezoRestValue;
-	// int _lastPiezoValue;
+	int _piezoRestDiff;
+	int _lastPiezoValue;
 	int _filteredPiezo;
 	static const float _piezoFilterConstant = 1.0f;
 
-	int _irPin, _piezo , _reed1, _reed2, _ledPin, _threshold;
+	int _irPin, _piezo , _reed1, _reed2, _ledPin, _tiltSwitch, _threshold;
 
 	// int _reed1State, _reed2State;
 	int _reedStates[2];
@@ -49,7 +49,7 @@ public:
 
 	Adafruit_NeoPixel strip;
 
-	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int threshold, bool invertedTiltSwitch = false, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), irValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
+	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int tiltSwitch, int threshold, bool invertedTiltSwitch = true, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _tiltSwitch(tiltSwitch), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), irValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
 
 
 	void init(){
@@ -60,6 +60,9 @@ public:
 
 		pinMode(_reed2, INPUT);
 		digitalWrite(_reed2, HIGH);
+
+		pinMode(_tiltSwitch, INPUT);
+		digitalWrite(_tiltSwitch, HIGH);
 
 		myColor[0] = 0;
 		myColor[1] = 0;
@@ -113,35 +116,70 @@ public:
 
 	//////SENSOR FUNCTIONS
 
-	// bool shaking(){
-	// 	return _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
+	bool shaking(){
+		return _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
+	}
+
+	// Original Piezotriggered
+	// bool piezoTriggered(int threshold){
+	// 	analogRead(_piezo);
+	// 	// delay(1);
+	// 	int newPiezoReading = analogRead(_piezo);
+	// 	bool result;
+	// 	if(newPiezoReading - _filteredPiezo > threshold){
+	// 		result = true;
+	// 	}else{
+	// 		_filteredPiezo = _piezoFilterConstant * newPiezoReading + (1 - _piezoFilterConstant) * _filteredPiezo;
+	// 		result = false;
+	// 	}
+	// 	return result;
+
+	// 	// return analogRead(_piezo)>50;
 	// }
 
+
+	// A version that looks for big difference between two subsequent readings. Aims to better detect the spiky voltage variations that are rendered by piezo taps.
 	bool piezoTriggered(int threshold){
 		analogRead(_piezo);
-		delay(1);
+		// delay(1);
 		int newPiezoReading = analogRead(_piezo);
 		bool result;
-		if(newPiezoReading - _filteredPiezo > threshold){
+		if(abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
 			result = true;
 		}else{
-			_filteredPiezo = _piezoFilterConstant * newPiezoReading + (1 - _piezoFilterConstant) * _filteredPiezo;
 			result = false;
 		}
+		_lastPiezoValue = newPiezoReading;
 		return result;
 
 		// return analogRead(_piezo)>50;
 	}
 
-	// void setupPiezoSensitivity(){
-	// 	int sum = 0;
-	// 	for(int i = 0; i < 50; i++){
-	// 		sum += analogRead(_piezo);
-	// 		delay(2);
-	// 	}
-	// 	sum /= 50;
-	// 	_piezoRestValue = sum;
-	// }
+	void setupPiezoSensitivity(){
+		int maxDifference = 0;
+		analogRead(_piezo);
+		int lastValue = analogRead(_piezo);
+		for(int i = 0; i < 500; i++){
+			analogRead(_piezo);
+			int value = analogRead(_piezo);
+			int difference = abs(value - lastValue);
+			if( difference > maxDifference){
+				maxDifference = difference;
+			}
+			lastValue = value;
+			delayMicroseconds(200);
+		}
+		_piezoRestDiff = maxDifference;
+		Serial.print("piezoRestDiff for cube ");
+		Serial.print(_cubeNumber);
+		Serial.print(" calculated to ");
+		Serial.println(maxDifference);
+	}
+
+	int readPiezo(){
+		analogRead(_piezo);
+		return analogRead(_piezo);
+	}
 
 	bool irTriggered(){
 		// if(millis()-lastIrRead > 0){
@@ -149,7 +187,7 @@ public:
 
 			_total -= _irReadings[_irIndex];
 			analogRead(_irPin);
-			delayMicroseconds(50);
+			// delayMicroseconds(50);
 			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
 			int value = analogRead(_irPin);
 			_irReadings[_irIndex] = 0.00004106960272 *value*value - 0.1409362699 * value + 79.87598879;
@@ -379,9 +417,6 @@ public:
 
 
 };
-
-bool Cube_class::sharedIsWaitingToRecord = false;
-bool Cube_class::sharedIsRecording = false;
 bool Cube_class::someCubeIsBusy = false;
 
 #endif
