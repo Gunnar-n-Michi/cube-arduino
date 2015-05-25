@@ -13,7 +13,7 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////DON*T FORGET TO SET GRID SIZES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #define GRID_SIZE_X 2
-#define GRID_SIZE_Y 3
+#define GRID_SIZE_Y 4
 #define UP    2
 #define RIGHT 3
 #define DOWN  0
@@ -26,6 +26,8 @@ const int NUMBEROFCUBES = GRID_SIZE_X * GRID_SIZE_Y;
 const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
 // int currentRecordingCube;
+
+const int irMaxDistance = 45;
 
 const int piezoThreshold = 200;
 const int dimScaleFactor = 4;
@@ -43,20 +45,30 @@ Cube_class cubes[] = {
       //(cubeNumber, ir, piezo, reed, reed, ledPin, tiltSwitch, IRthreshold,) invertedTilt, stripOffset
   
   
-  Cube_class(0, A8, A0, 2, 3, 46, 22, 55),
-  Cube_class(1, A9, A1, 4, 5, 47, 23, 55),
-  Cube_class(2, A10, A2, 6, 7, 48, 24, 55),
-  Cube_class(3, A11, A3, 8, 9, 49, 25, 55),
-  Cube_class(4, A12, A4, 10, 11, 50, 26, 55),
-  Cube_class(5, A13, A5, 12, 13, 51, 27, 55),
+  //Handmade layout
+  // Cube_class(0, A8, A0, 2, 3, 46, 22, 55),
+  // Cube_class(1, A9, A1, 4, 5, 47, 23, 55),
+  // Cube_class(2, A10, A2, 6, 7, 48, 24, 55),
+  // Cube_class(3, A11, A3, 8, 9, 49, 25, 55),
+  // Cube_class(4, A12, A4, 10, 11, 50, 26, 55),
+  // Cube_class(5, A13, A5, 12, 13, 51, 27, 55),
   // Cube_class(5, A5, 27, 25, 23, 40, 60),
   // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
+
+  //Shield layout!!!
+  Cube_class(0, A8, A9, 13, 12, 6, 9, irMaxDistance),
+  Cube_class(1, A10, A11, 11, 10, 7, 8, irMaxDistance),
+  Cube_class(2, A12, A13, 4, 3, 2, 17, irMaxDistance),
+  Cube_class(3, A14, A15, 15, 14, 16, 18, irMaxDistance),
+  Cube_class(4, A0, A1, 24, 26, 53, 51, irMaxDistance),
+  Cube_class(5, A2, A3, 28, 30, 40, 42, irMaxDistance),
+  Cube_class(6, A4, A5, 32, 38, 34, 50, irMaxDistance),
+  Cube_class(7, A6, A7, 48, 46, 52, 49, irMaxDistance)
 };
 
 //DELETE LATER! When not needed
 int irReading = 0;
 char inByte;
-bool ledState;
 unsigned long startRequestSendTime;
 bool shouldSendStartRequest = false;
 
@@ -64,13 +76,13 @@ void setup() {
   Serial.begin(9600);
   // strip.begin();
   // strip.show(); // Initialize all pixels to 'off'
-  pinMode(13, OUTPUT);
 
   for (int i = 0; i < NUMBEROFCUBES; ++i)
   {
     cubes[i].init();
     cubes[i].setupPiezoSensitivity();
   }
+  delay(500);
 
   //TODO: implement handshake here
   if(!DIAGNOSIS){
@@ -79,7 +91,7 @@ void setup() {
     
   }else{
     // delay(2000);
-    printNeighbours();
+    // printNeighbours();
    // showCalibrationValues();
   }
 }
@@ -208,7 +220,6 @@ void loop() {
   if(SET_AMP_MODE){
     set_amp();
   }
-  digitalWrite(13, ledState);
 
   handleSerial();
 
@@ -254,7 +265,7 @@ void readCube(int i){
       if(cubes[i].irTriggered() && !Cube_class::someCubeIsBusy){
         cubes[i].lastIrMessage = millis();
         cubes[i].cubeOffVerified = false;
-        sendTrigger(i, convertToByte(cubes[i].irValue, 15, 55));
+        sendTrigger(i, convertToByte(cubes[i].irValue, 15, irMaxDistance));
       }else if(!cubes[i].cubeOffVerified){
         cubes[i].lastIrMessage = millis();
         sendTurnOffCube(i);
@@ -369,7 +380,9 @@ void readCube(int i){
 
   //Piezo stuff
   if(/// In some cases we don't want to rercord even if it's triggered.
-      (cubes[i].piezoTriggered(piezoThreshold) || cubes[i].shaking())
+      //(cubes[i].piezoTriggered(piezoThreshold) 
+        cubes[i].shaking()
+        //)
       && !cubes[i].isWaitingToRecord 
       && !cubes[i].isRecording
       && !cubes[i].getReedState(0)//provide against false tap trigger when touching two cubes.
@@ -397,7 +410,7 @@ void readCube(int i){
 
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
-      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].irValue, 15, 55)));
+      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].irValue, 15, irMaxDistance)));
       Serial.print("ir on ");
       Serial.print(i);
       Serial.print(" is triggered with a value of");
@@ -408,31 +421,31 @@ void cubeDiagnosis(int i){
       // sendTurnOffCube(i);
     }
 
-    if(cubes[i].piezoTriggered(piezoThreshold)){
-      cubes[i].setCubeColor(255,255,255); //White if tapped
-
-      Serial.print("Cube ");
-      Serial.print(i);
-      Serial.print(" is tapped");
-      if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
-        cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
-        Serial.print(" but reed switch was active");
-      }
-      Serial.println();
-    }
-
-    // if(cubes[i].shaking()){
-    //   cubes[i].setCubeColor(0,255,255);
+    // if(cubes[i].piezoTriggered(piezoThreshold)){
+    //   cubes[i].setCubeColor(255,255,255); //White if tapped
 
     //   Serial.print("Cube ");
     //   Serial.print(i);
-    //   Serial.print(" is shaking");
+    //   Serial.print(" is tapped");
+    //   if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
+    //     cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
+    //     Serial.print(" but reed switch was active");
+    //   }
     //   Serial.println();
     // }
 
-    if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
-      cubes[i].setCubeColor(255,0,255); //White if tapped
+    if(cubes[i].shaking()){
+      cubes[i].setCubeColor(0,255,255);
+
+      Serial.print("Cube ");
+      Serial.print(i);
+      Serial.print(" had the tiltSwitch excited.");
+      Serial.println();
     }
+
+    // if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
+    //   cubes[i].setCubeColor(255,0,255); //
+    // }
 
     cubes[i].updateReedStates();
     

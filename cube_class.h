@@ -4,12 +4,15 @@
 #include <Arduino.h>
 #include "helpers.h"
 #define SMOOTHINGSIZE 3
+#define REQUIRED_SHAKES 12
 
 // class Adafruit_NeoPixel;
 
 class Cube_class{
 
 private:
+	unsigned long _tiltSwitchTimeStamp[REQUIRED_SHAKES];
+	int _currentTiltTimeStampIndex;
 	int _irReadings[SMOOTHINGSIZE];
 	int _irIndex;
 	int _total;
@@ -21,6 +24,7 @@ private:
 	int _lastPiezoValue;
 	int _filteredPiezo;
 	static const float _piezoFilterConstant = 1.0f;
+	static const unsigned long _tappTime = 450;
 
 	int _irPin, _piezo , _reed1, _reed2, _ledPin, _tiltSwitch, _threshold;
 
@@ -69,6 +73,16 @@ public:
 		myColor[2] = 0;
 
 		_firstPixel = 0;
+		_currentTiltTimeStampIndex = 0;
+
+		for(int i = 0; i<SMOOTHINGSIZE*2; i++){
+			irTriggered();
+		}
+
+		for(int i = 0; i<REQUIRED_SHAKES; i++){
+			_tiltSwitchTimeStamp[i] = 0;
+		}
+		_lastPiezoValue = analogRead(_piezo);
 
 		recordStamp = millis();
 		lastIrRead = millis();
@@ -117,7 +131,20 @@ public:
 	//////SENSOR FUNCTIONS
 
 	bool shaking(){
-		return _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
+		// Serial.println((_invertedTiltSwitch xor !digitalRead(_tiltSwitch)));
+		unsigned long currentTime = millis();
+		bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
+		if(triggered){
+			Serial.print("shaken at: "); Serial.println(currentTime);
+			_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
+			_currentTiltTimeStampIndex ++;
+			_currentTiltTimeStampIndex %= REQUIRED_SHAKES;
+
+			if(currentTime - _tiltSwitchTimeStamp[_currentTiltTimeStampIndex] <= _tappTime){
+				return true;
+			}
+		}	
+		return false;
 	}
 
 	// Original Piezotriggered
@@ -144,7 +171,10 @@ public:
 		// delay(1);
 		int newPiezoReading = analogRead(_piezo);
 		bool result;
-		if(abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
+		if(
+			//abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
+			newPiezoReading > (threshold+_piezoRestDiff)){
+			Serial.print("Tapped with value: "); Serial.println(newPiezoReading);
 			result = true;
 		}else{
 			result = false;
@@ -159,15 +189,15 @@ public:
 		int maxDifference = 0;
 		analogRead(_piezo);
 		int lastValue = analogRead(_piezo);
-		for(int i = 0; i < 500; i++){
+		for(int i = 0; i < 1000; i++){
 			analogRead(_piezo);
 			int value = analogRead(_piezo);
 			int difference = abs(value - lastValue);
-			if( difference > maxDifference){
-				maxDifference = difference;
+			if( value > maxDifference){
+				maxDifference = value;
 			}
 			lastValue = value;
-			delayMicroseconds(200);
+			delayMicroseconds(150);
 		}
 		_piezoRestDiff = maxDifference;
 		Serial.print("piezoRestDiff for cube ");
@@ -190,8 +220,10 @@ public:
 			// delayMicroseconds(50);
 			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
 			int value = analogRead(_irPin);
-			_irReadings[_irIndex] = 0.00004106960272 *value*value - 0.1409362699 * value + 79.87598879;
-			// 6.673596372·10-5 x2 - 1.592576997·10-1 x + 82.88834375
+			// _irReadings[_irIndex] = 0.00011842022*value*value - 0.2028297207*value + 92.1338251;
+			_irReadings[_irIndex] = 0.000000001406137854*value*value*value*value - 0.00000362383338*value*value*value + 0.003084435829*value*value - 1.169486111*value + 200.280207;
+			//2 degree polynomial regression: 1.1842022·10-4 x2 - 2.028297207·10-1 x + 92.1338251;
+			//4 degree polynomial regression: 1.406137854·10-9 x4 - 3.62383338·10-6 x3 + 3.084435829·10-3 x2 - 1.169486111 x + 200.280207
 			
 			////TESTCODE
 			// if(_cubeNumber == 0){
