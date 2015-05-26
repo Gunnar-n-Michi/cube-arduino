@@ -3,10 +3,13 @@
 #define COPYSPEED 100
 #define FADESPEED 32
 
+#define irMaxDistance 50
+
 ///DIAGNOSIS or ACTIVATE_IR
 #define DIAGNOSIS false
 #define ACTIVATE_IR true
 #define SET_AMP_MODE false
+#define MEASURE_IR false
 #define DEBUG
 
 
@@ -27,7 +30,7 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
 // int currentRecordingCube;
 
-const int irMaxDistance = 45;
+
 
 const int piezoThreshold = 200;
 const int dimScaleFactor = 4;
@@ -62,7 +65,7 @@ Cube_class cubes[] = {
   Cube_class(3, A14, A15, 15, 14, 16, 18, irMaxDistance),
   Cube_class(4, A0, A1, 24, 26, 53, 51, irMaxDistance),
   Cube_class(5, A2, A3, 28, 30, 40, 42, irMaxDistance),
-  Cube_class(6, A4, A5, 32, 38, 34, 50, irMaxDistance),
+  Cube_class(6, A4, A5, 38, 32, 34, 50, irMaxDistance),
   Cube_class(7, A6, A7, 48, 46, 52, 49, irMaxDistance)
 };
 
@@ -80,7 +83,6 @@ void setup() {
   for (int i = 0; i < NUMBEROFCUBES; ++i)
   {
     cubes[i].init();
-    cubes[i].setupPiezoSensitivity();
   }
   delay(500);
 
@@ -238,6 +240,8 @@ void loop() {
     // cubes[i].pullAnimation(DOWN);
     if(DIAGNOSIS){
       cubeDiagnosis(i);
+    }else if(MEASURE_IR){
+      measureIR(2);  
     }else{
       readCube(i);  
     }
@@ -257,15 +261,21 @@ void readCube(int i){
 
   if(ACTIVATE_IR){
     if(!Cube_class::someCubeIsBusy 
-      && millis() - cubes[i].lastIrMessage > 5 
-      && millis() - cubes[i].triggerStamp > 300){
+      && millis() - cubes[i].triggerStamp > 300
+      && millis() - cubes[i].lastIrRead > 40
+      ){
       // if(i == 0){
       //   sendMessage(String(cubes[i].irValue));
       // }
       if(cubes[i].irTriggered() && !Cube_class::someCubeIsBusy){
-        cubes[i].lastIrMessage = millis();
+        
         cubes[i].cubeOffVerified = false;
-        sendTrigger(i, convertToByte(cubes[i].irValue, 15, irMaxDistance));
+        // sendTrigger(i, convertToByte(cubes[i].irValue, 15, irMaxDistance));
+        if(cubes[i].scalePosition != cubes[i].lastScalePosition
+          || millis() - cubes[i].lastIrMessage > 100 ){
+          cubes[i].lastIrMessage = millis();
+          sendTrigger(i, cubes[i].scalePosition);
+        }
       }else if(!cubes[i].cubeOffVerified){
         cubes[i].lastIrMessage = millis();
         sendTurnOffCube(i);
@@ -410,11 +420,11 @@ void readCube(int i){
 
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
-      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].irValue, 15, irMaxDistance)));
+      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].scalePosition, 0, 6)));
       Serial.print("ir on ");
       Serial.print(i);
       Serial.print(" is triggered with a value of");
-      Serial.println(cubes[i].irValue);
+      Serial.println(cubes[i].scalePosition);
       // sendTrigger(i, cubes[i].irValue);
       // delay(2000);
     }else{
@@ -476,6 +486,11 @@ void cubeDiagnosis(int i){
       Serial.println(pair[1]);
     }
     
+}
+
+void measureIR(int i){
+  // Serial.print("IR is: ");
+  Serial.println(cubes[i].readIr());
 }
 
 void printNeighbours(){

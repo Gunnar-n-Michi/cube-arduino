@@ -15,6 +15,7 @@ private:
 	int _currentTiltTimeStampIndex;
 	int _irReadings[SMOOTHINGSIZE];
 	int _irIndex;
+	int _smoothedIrValue;
 	int _total;
 	int _cubeNumber;
 	bool _invertedTiltSwitch;
@@ -25,6 +26,8 @@ private:
 	int _filteredPiezo;
 	static const float _piezoFilterConstant = 1.0f;
 	static const unsigned long _tappTime = 450;
+#define IRTABLESIZE 16
+	static int irMeasurements[][IRTABLESIZE];
 
 	int _irPin, _piezo , _reed1, _reed2, _ledPin, _tiltSwitch, _threshold;
 
@@ -35,7 +38,9 @@ private:
 
 public:
 	int myColor[3];
-	int irValue;
+	int scalePosition;
+	int lastScalePosition;
+	int calculatedDistance;
 	unsigned long recordStamp;
 	unsigned long lastIrRead;
 	unsigned long lastIrMessage;
@@ -53,7 +58,7 @@ public:
 
 	Adafruit_NeoPixel strip;
 
-	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int tiltSwitch, int threshold, bool invertedTiltSwitch = true, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _tiltSwitch(tiltSwitch), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), irValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
+	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int tiltSwitch, int threshold, bool invertedTiltSwitch = true, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _tiltSwitch(tiltSwitch), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), _smoothedIrValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
 
 
 	void init(){
@@ -75,13 +80,16 @@ public:
 		_firstPixel = 0;
 		_currentTiltTimeStampIndex = 0;
 
-		for(int i = 0; i<SMOOTHINGSIZE*2; i++){
+		for(int i = 0; i<SMOOTHINGSIZE*2; i++){//This is to fill the moving average with values.
 			irTriggered();
 		}
+
+		setupPiezoSensitivity();
 
 		for(int i = 0; i<REQUIRED_SHAKES; i++){
 			_tiltSwitchTimeStamp[i] = 0;
 		}
+
 		_lastPiezoValue = analogRead(_piezo);
 
 		recordStamp = millis();
@@ -215,13 +223,51 @@ public:
 		// if(millis()-lastIrRead > 0){
 			lastIrRead = millis();
 
+			//Moving average part
 			_total -= _irReadings[_irIndex];
 			analogRead(_irPin);
 			// delayMicroseconds(50);
 			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
-			int value = analogRead(_irPin);
+			_irReadings[_irIndex] = analogRead(_irPin);
+			_total += _irReadings[_irIndex];
+			_irIndex++;
+
+			if(_irIndex >= SMOOTHINGSIZE){
+				_irIndex = 0;
+			}
+
+			_smoothedIrValue = _total/SMOOTHINGSIZE;
+
+			//Lookup table part
+			// int calculatedDistance;
+			for(int i = 0; i < IRTABLESIZE; i++){
+				if(_smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
+					// Serial.print("Value in lookup matched: ");
+					// Serial.print(value);Serial.print("on index");Serial.print(i); Serial.print(" ");
+					// Serial.println(irMeasurements[0][i]);
+					if(i == 0){//Is the sensed value greater than the highest premeausured one?
+						calculatedDistance = irMeasurements[1][0];
+						// Serial.println("was at first index in irMeasurements. breaking the loop!");
+						break;
+					}
+					int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i];
+					// Serial.print("measureDifference is: "); Serial.println( measureDifference);
+					int deltaValue = _smoothedIrValue - irMeasurements[0][i];
+					// Serial.print("deltaValue is: "); Serial.println( deltaValue);
+					float factor = (float) deltaValue/measureDifference;
+					// Serial.print("factor is: "); Serial.println( factor);
+					int deltaDistance = factor * (irMeasurements[1][i] - irMeasurements[1][i-1]);
+					// Serial.print("deltaDistance is: "); Serial.println( deltaDistance);
+					calculatedDistance = irMeasurements[1][i-1] + deltaDistance;
+					// Serial.print("calculatedDistance is: "); Serial.println( calculatedDistance);
+
+					break;
+				}
+			}
+			// _irReadings[_irIndex] = calculatedDistance;
+
 			// _irReadings[_irIndex] = 0.00011842022*value*value - 0.2028297207*value + 92.1338251;
-			_irReadings[_irIndex] = 0.000000001406137854*value*value*value*value - 0.00000362383338*value*value*value + 0.003084435829*value*value - 1.169486111*value + 200.280207;
+			// _irReadings[_irIndex] = 0.000000001406137854*value*value*value*value - 0.00000362383338*value*value*value + 0.003084435829*value*value - 1.169486111*value + 200.280207;
 			//2 degree polynomial regression: 1.1842022·10-4 x2 - 2.028297207·10-1 x + 92.1338251;
 			//4 degree polynomial regression: 1.406137854·10-9 x4 - 3.62383338·10-6 x3 + 3.084435829·10-3 x2 - 1.169486111 x + 200.280207
 			
@@ -230,18 +276,27 @@ public:
 			// 	Serial.println(_irReadings[_irIndex]);
 			// }
 			//*****************
-			_total += _irReadings[_irIndex];
-			_irIndex++;
+			
 
-			if(_irIndex >= SMOOTHINGSIZE)
-				_irIndex = 0;
+			
 
-			irValue = _total/SMOOTHINGSIZE;
-			if(irValue < _threshold){
+			lastScalePosition = scalePosition;
+			scalePosition = map(calculatedDistance, 15, _threshold, 0, 6);
+
+			unsigned long endStamp= millis();
+
+			// Serial.print("Running time of irTriggered: ");Serial.println(endStamp - lastIrRead);
+
+			if(calculatedDistance < _threshold){
 				return true;
 			}
 			return false;
 		// }
+	}
+
+	int readIr(){
+		analogRead(_irPin);
+		return analogRead(_irPin);
 	}
 
 	#define REED_IDLE 0
@@ -450,5 +505,14 @@ public:
 
 };
 bool Cube_class::someCubeIsBusy = false;
+int Cube_class::irMeasurements[2][IRTABLESIZE] = {
+	// 	{556, 549, 542, 532, 525, 514, 401, 304, 248, 0},
+	// 	{15,  16,  17,  18,  19,  20,  30,  40,  50, 60}
+	// };
 
+
+	{555, 550, 537, 529, 519, 511, 461, 405, 352, 315, 283, 256, 232, 217, 191, 0},
+
+	{15,  16,  17,  18,  19,  20,  25,  30,  35,  40,  45,  50,  55,  60,  70, 180}
+};
 #endif
