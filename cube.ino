@@ -3,10 +3,10 @@
 #define COPYSPEED 100
 #define FADESPEED 512
 
-#define irMaxDistance 50
+// #define irMaxDistance 60
 
 ///DIAGNOSIS or ACTIVATE_IR
-#define DIAGNOSIS false
+#define DIAGNOSIS true
 #define ACTIVATE_IR true
 #define SET_AMP_MODE false
 #define MEASURE_IR false
@@ -17,10 +17,10 @@
 ///////////////////////////////////////////////////////////////////////////////////////////DON*T FORGET TO SET GRID SIZES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #define GRID_SIZE_X 2
 #define GRID_SIZE_Y 4
-#define UP    2
-#define RIGHT 3
-#define DOWN  0
-#define LEFT  1
+#define UP    1
+#define RIGHT 2
+#define DOWN  3
+#define LEFT  0
 
 #include <Adafruit_NeoPixel.h>//Order matters here. Since the arduino IDE (1.0.6) doesn't allow including libraries in libraries we have to include the neopixels here, before the cube_class.
 #include "cube_class.h"
@@ -34,6 +34,8 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
 const int piezoThreshold = 200;
 const int dimScaleFactor = 4;
+const int IRthreshold = 235;
+const int irMaxDistance = 60;
 
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = pin number (most are valid)
@@ -59,14 +61,14 @@ Cube_class cubes[] = {
   // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
 
   //Shield layout!!!
-  Cube_class(0, A8, A9, 13, 12, 6, 9, irMaxDistance),
-  Cube_class(1, A10, A11, 11, 10, 7, 8, irMaxDistance),
-  Cube_class(2, A12, A13, 4, 3, 2, 17, irMaxDistance),
-  Cube_class(3, A14, A15, 15, 14, 16, 18, irMaxDistance),
-  Cube_class(4, A0, A1, 24, 26, 53, 51, irMaxDistance),
-  Cube_class(5, A2, A3, 28, 30, 40, 42, irMaxDistance),
-  Cube_class(6, A4, A5, 38, 32, 34, 50, irMaxDistance),
-  Cube_class(7, A6, A7, 48, 46, 52, 49, irMaxDistance)
+  Cube_class(0, A8, A9, 12, 13, 6, 9, IRthreshold),
+  Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
+  Cube_class(2, A12, A13, 3, 4, 2, 17, IRthreshold),
+  Cube_class(3, A14, A15, 15, 14, 16, 18, IRthreshold),
+  Cube_class(4, A0, A1, 24, 26, 53, 51, IRthreshold),
+  Cube_class(5, A2, A3, 28, 30, 40, 42, IRthreshold),
+  Cube_class(6, A4, A5, 32, 38, 34, 50, IRthreshold),
+  Cube_class(7, A6, A7, 46, 48, 52, 49, IRthreshold)
 };
 
 //DELETE LATER! When not needed
@@ -272,7 +274,7 @@ void readCube(int i){
 
   if(ACTIVATE_IR){
     if(!Cube_class::someCubeIsBusy 
-      && millis() - cubes[i].triggerStamp > 300
+      && millis() - cubes[i].triggerStamp > 100
       && millis() - cubes[i].lastIrRead > 40
       ){
       // if(i == 0){
@@ -312,7 +314,7 @@ void readCube(int i){
 
   for(int j = 0; j < 2; j++){
     int direction;
-    if(j == 0){direction = LEFT;}else{direction = UP;} // Set direction for current reed.
+    if(j == 0){direction = RIGHT;}else{direction = UP;} // Set direction for current reed.
     int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
     if(!getCopyPair(pair, i, direction)){//Retrieve the pair. Also, We should never handle the reeds on the edges. Hence the if statement.
       if(cubes[i].getReedState(j) == REED_TOUCHING){//Just some test code to visualize when edge reed is triggered
@@ -431,11 +433,17 @@ void readCube(int i){
 
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
-      cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].scalePosition, 0, 6)));
+    int bbb = map(cubes[i].smoothedIrValue, 550, IRthreshold, 0, 6);
+      cubes[i].setCubeColor(Wheel(convertToByte(bbb, 0, 6)));
       Serial.print("ir on ");
       Serial.print(i);
-      Serial.print(" is triggered with a value of");
-      Serial.println(cubes[i].scalePosition);
+      Serial.print(" is triggered with a scaleposition of ");
+      Serial.print(cubes[i].scalePosition);
+      Serial.print(", a cm value of ");
+      Serial.print(cubes[i].calculatedDistance);
+      Serial.print(", and a irValue of ");
+      Serial.print(cubes[i].smoothedIrValue);
+      Serial.println();
       // sendTrigger(i, cubes[i].irValue);
       // delay(2000);
     }else{
@@ -455,14 +463,14 @@ void cubeDiagnosis(int i){
     //   Serial.println();
     // }
 
-    if(cubes[i].shaking()){
-      cubes[i].setCubeColor(0,255,255);
+    // if(cubes[i].shaking()){
+    //   cubes[i].setCubeColor(0,255,255);
 
-      Serial.print("Cube ");
-      Serial.print(i);
-      Serial.print(" had the tiltSwitch excited.");
-      Serial.println();
-    }
+    //   Serial.print("Cube ");
+    //   Serial.print(i);
+    //   Serial.print(" had the tiltSwitch excited.");
+    //   Serial.println();
+    // }
 
     // if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
     //   cubes[i].setCubeColor(255,0,255); //
@@ -472,29 +480,39 @@ void cubeDiagnosis(int i){
     
     int reed1 = cubes[i].getReedState(0);
     if(reed1){
-      cubes[i].pullAnimation(RIGHT);
-      Serial.print("Reed 1 on cube ");
-      Serial.print(i);
-      Serial.print(" has state: ");
-      Serial.print(reed1);
-      Serial.print(" getCopypair returned: ");
+      // Serial.print("Reed 1 on cube ");
+      // Serial.print(i);
+      // Serial.print(" has state: ");
+      // Serial.print(reed1);
+      // Serial.print(" getCopypair returned: ");
       int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
       getCopyPair(pair, i, RIGHT);
-      Serial.print(pair[0]);
-      Serial.println(pair[1]);
+      // Serial.print(pair[0]);
+      // Serial.println(pair[1]);
+
+      // Serial.print(". Direction is RIGHT");
+
+      //touchAnimation(pair[0], pair[1]);
+      cubes[pair[0]].pullAnimation(RIGHT);
+      cubes[pair[1]].pullAnimation(RIGHT);
     }
     int reed2 = cubes[i].getReedState(1);
     if(reed2){
-      cubes[i].pullAnimation(UP);
-      Serial.print("Reed 2 on cube ");
-      Serial.print(i);
-      Serial.print(" has state: ");
-      Serial.print(reed2);
-      Serial.print(" getCopypair returned: ");
+      // Serial.print("Reed 2 on cube ");
+      // Serial.print(i);
+      // Serial.print(" has state: ");
+      // Serial.print(reed2);
+      // Serial.print(" getCopypair returned: ");
       int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
       getCopyPair(pair, i, UP);
-      Serial.print(pair[0]);
-      Serial.println(pair[1]);
+      // Serial.print(pair[0]);
+      // Serial.println(pair[1]);
+
+      // Serial.print(". Direction is UP");
+
+      cubes[pair[0]].pullAnimation(UP);
+      cubes[pair[1]].pullAnimation(UP);
+      //touchAnimation(pair[0], pair[1]);
     }
     
 }

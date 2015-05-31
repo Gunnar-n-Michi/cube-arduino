@@ -3,8 +3,9 @@
 
 #include <Arduino.h>
 #include "helpers.h"
-#define SMOOTHINGSIZE 3
+#define SMOOTHINGSIZE 5
 #define REQUIRED_SHAKES 12
+#define IRMAX 550
 
 // class Adafruit_NeoPixel;
 
@@ -15,7 +16,7 @@ private:
 	int _currentTiltTimeStampIndex;
 	int _irReadings[SMOOTHINGSIZE];
 	int _irIndex;
-	int _smoothedIrValue;
+	// int _smoothedIrValue;
 	int _total;
 	int _cubeNumber;
 	bool _invertedTiltSwitch;
@@ -41,6 +42,7 @@ public:
 	int scalePosition;
 	int lastScalePosition;
 	int calculatedDistance;
+	int smoothedIrValue;
 	unsigned long recordStamp;
 	unsigned long lastIrRead;
 	unsigned long lastIrMessage;
@@ -58,7 +60,7 @@ public:
 
 	Adafruit_NeoPixel strip;
 
-	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int tiltSwitch, int threshold, bool invertedTiltSwitch = true, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _tiltSwitch(tiltSwitch), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), _smoothedIrValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
+	Cube_class(int cubeNumber, int irPin, int piezo, int reed1, int reed2, int ledPin, int tiltSwitch, int threshold, bool invertedTiltSwitch = true, int stripOffset = 0): _cubeNumber(cubeNumber), _irPin(irPin), _piezo(piezo), _reed1(reed1), _reed2(reed2), _ledPin(ledPin), _tiltSwitch(tiltSwitch), _threshold(threshold), _invertedTiltSwitch(invertedTiltSwitch), _stripOffset(stripOffset), smoothedIrValue(0), _irIndex(0), _total(0), strip(Adafruit_NeoPixel(8, ledPin, NEO_GRB + NEO_KHZ800)){}
 
 
 	void init(){
@@ -84,7 +86,7 @@ public:
 			irTriggered();
 		}
 
-		setupPiezoSensitivity();
+		// setupPiezoSensitivity();
 
 		for(int i = 0; i<REQUIRED_SHAKES; i++){
 			_tiltSwitchTimeStamp[i] = 0;
@@ -236,12 +238,12 @@ public:
 				_irIndex = 0;
 			}
 
-			_smoothedIrValue = _total/SMOOTHINGSIZE;
+			smoothedIrValue = _total/SMOOTHINGSIZE;
 
 			//Lookup table part
-			// int calculatedDistance;
+			// calculates the variable calculatedDistance;
 			for(int i = 0; i < IRTABLESIZE; i++){
-				if(_smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
+				if(smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
 					// Serial.print("Value in lookup matched: ");
 					// Serial.print(value);Serial.print("on index");Serial.print(i); Serial.print(" ");
 					// Serial.println(irMeasurements[0][i]);
@@ -252,7 +254,7 @@ public:
 					}
 					int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i];
 					// Serial.print("measureDifference is: "); Serial.println( measureDifference);
-					int deltaValue = _smoothedIrValue - irMeasurements[0][i];
+					int deltaValue = smoothedIrValue - irMeasurements[0][i];
 					// Serial.print("deltaValue is: "); Serial.println( deltaValue);
 					float factor = (float) deltaValue/measureDifference;
 					// Serial.print("factor is: "); Serial.println( factor);
@@ -281,13 +283,13 @@ public:
 			
 
 			lastScalePosition = scalePosition;
-			scalePosition = map(calculatedDistance, 15, _threshold, 0, 6);
+			scalePosition = constrain(map(smoothedIrValue, IRMAX, _threshold+40, 0, 6), 0,6);
 
 			unsigned long endStamp= millis();
 
 			// Serial.print("Running time of irTriggered: ");Serial.println(endStamp - lastIrRead);
 
-			if(calculatedDistance < _threshold){
+			if(smoothedIrValue > _threshold){
 				return true;
 			}
 			return false;
