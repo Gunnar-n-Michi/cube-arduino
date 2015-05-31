@@ -6,7 +6,7 @@
 // #define irMaxDistance 60
 
 ///DIAGNOSIS or ACTIVATE_IR
-#define DIAGNOSIS true
+#define DIAGNOSIS false
 #define ACTIVATE_IR true
 #define SET_AMP_MODE false
 #define MEASURE_IR false

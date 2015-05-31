@@ -145,7 +145,7 @@ public:
 		unsigned long currentTime = millis();
 		bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
 		if(triggered){
-			Serial.print("shaken at: "); Serial.println(currentTime);
+			// Serial.print("shaken at: "); Serial.println(currentTime);
 			_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
 			_currentTiltTimeStampIndex ++;
 			_currentTiltTimeStampIndex %= REQUIRED_SHAKES;
@@ -283,7 +283,7 @@ public:
 			
 
 			lastScalePosition = scalePosition;
-			scalePosition = constrain(map(smoothedIrValue, IRMAX, _threshold+40, 0, 6), 0,6);
+			scalePosition = constrain(map(smoothedIrValue, IRMAX, _threshold+40, 0, 5), 0,5);
 
 			unsigned long endStamp= millis();
 
