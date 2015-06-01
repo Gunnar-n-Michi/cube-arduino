@@ -6,7 +6,7 @@
 // #define irMaxDistance 60
 
 ///DIAGNOSIS or ACTIVATE_IR
-#define DIAGNOSIS true
+#define DIAGNOSIS false
 #define ACTIVATE_IR true
 #define SET_AMP_MODE false
 #define MEASURE_IR false
@@ -34,7 +34,7 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
 const int piezoThreshold = 200;
 const int dimScaleFactor = 4;
-const int IRthreshold = 245;
+const int IRthreshold = 235;
 const int irMaxDistance = 60;
 
 // Parameter 1 = number of pixels in strip
@@ -263,7 +263,7 @@ void readCube(int i){
 
   if(ACTIVATE_IR){
     if(!Cube_class::someCubeIsBusy 
-      && millis() - cubes[i].triggerStamp > 300
+      && millis() - cubes[i].triggerStamp > 100
       && millis() - cubes[i].lastIrRead > 40
       ){
       // if(i == 0){
@@ -452,14 +452,14 @@ void cubeDiagnosis(int i){
     //   Serial.println();
     // }
 
-    if(cubes[i].shaking()){
-      cubes[i].setCubeColor(0,255,255);
+    // if(cubes[i].shaking()){
+    //   cubes[i].setCubeColor(0,255,255);
 
-      Serial.print("Cube ");
-      Serial.print(i);
-      Serial.print(" had the tiltSwitch excited.");
-      Serial.println();
-    }
+    //   Serial.print("Cube ");
+    //   Serial.print(i);
+    //   Serial.print(" had the tiltSwitch excited.");
+    //   Serial.println();
+    // }
 
     // if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
     //   cubes[i].setCubeColor(255,0,255); //
