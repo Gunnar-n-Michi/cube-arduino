@@ -133,7 +133,8 @@ void handleSerial(){
         newLine = readChar();
         if(newLine == '\n'){
           uint32_t color = Wheel(effect);
-          cubes[affectedCube].setCubeColor(color);
+          // cubes[affectedCube].setCubeColor(color);
+          cubes[affectedCube].setCubeColor(255,255,255);
           //Depack the colors
           int
           r = (uint8_t)(color >> 16),
@@ -263,7 +264,7 @@ void readCube(int i){
 
   if(ACTIVATE_IR){
     if(!Cube_class::someCubeIsBusy 
-      && millis() - cubes[i].triggerStamp > 100
+      && millis() - cubes[i].triggerStamp > 300
       && millis() - cubes[i].lastIrRead > 40
       ){
       // if(i == 0){
