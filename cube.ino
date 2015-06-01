@@ -1,7 +1,7 @@
 // #define STRIP_PIN 53
 #define PIXELSPERCUBE 8
 #define COPYSPEED 100
-#define FADESPEED 512
+#define FADESPEED 32
 
 // #define irMaxDistance 60
 
@@ -133,24 +133,13 @@ void handleSerial(){
         newLine = readChar();
         if(newLine == '\n'){
           uint32_t color = Wheel(effect);
-          //cubes[affectedCube].setCubeColor(color);
-          cubes[affectedCube].setCubeColor(255,255,255);
+          cubes[affectedCube].setCubeColor(color);
           //Depack the colors
           int
           r = (uint8_t)(color >> 16),
           g = (uint8_t)(color >>  8),
           b = (uint8_t)color;
           cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
-          cubes[affectedCube].triggerStamp = millis();
-          // Serial.print("Cube triggered "); Serial.println(affectedCube);
-        }
-      }else if(command == 'e'){//Empty trigger cube
-        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
-          return;
-        }
-        newLine = readChar();
-        if(newLine == '\n'){
-          cubes[affectedCube].setCubeColor(255,255,255);
           cubes[affectedCube].triggerStamp = millis();
           // Serial.print("Cube triggered "); Serial.println(affectedCube);
         }
@@ -242,7 +231,7 @@ void loop() {
 
   //Continuously dim the leds
   for(int i = 0; i<NUMBEROFCUBES; i++){
-    cubes[i].fadeToMyColor(FADESPEED);
+    cubes[i].fadeToMyColor(64);
     cubes[i].strip.show();
   }
 
