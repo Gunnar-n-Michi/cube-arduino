@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "helpers.h"
 #define SMOOTHINGSIZE 5
-#define REQUIRED_SHAKES 12
+#define REQUIRED_SHAKES 14
 #define IRMAX 550
 
 // class Adafruit_NeoPixel;
@@ -146,6 +146,7 @@ public:
 		bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
 		if(triggered){
 			// Serial.print("shaken at: "); Serial.println(currentTime);
+			setCubeColor(0,0,255);
 			_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
 			_currentTiltTimeStampIndex ++;
 			_currentTiltTimeStampIndex %= REQUIRED_SHAKES;

@@ -275,7 +275,7 @@ void readCube(int i){
         cubes[i].cubeOffVerified = false;
         // sendTrigger(i, convertToByte(cubes[i].irValue, 15, irMaxDistance));
         if(cubes[i].scalePosition != cubes[i].lastScalePosition
-          || millis() - cubes[i].lastIrMessage > 100 ){
+          || millis() - cubes[i].lastIrMessage > 150 ){
           cubes[i].lastIrMessage = millis();
           sendTrigger(i, cubes[i].scalePosition);
         }
