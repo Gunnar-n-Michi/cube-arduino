@@ -32,7 +32,7 @@ const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
 
 
-const int piezoThreshold = 200;
+const int piezoThreshold = 50;
 const int dimScaleFactor = 4;
 const int IRthreshold = 235;
 const int irMaxDistance = 60;
@@ -393,9 +393,8 @@ void readCube(int i){
 
   //Piezo stuff
   if(/// In some cases we don't want to rercord even if it's triggered.
-      //(cubes[i].piezoTriggered(piezoThreshold) 
-        cubes[i].shaking()
-        //)
+      cubes[i].piezoTriggered(piezoThreshold)
+      &&  cubes[i].shaking()
       && !cubes[i].isWaitingToRecord 
       && !cubes[i].isRecording
       && !cubes[i].getReedState(0)//provide against false tap trigger when touching two cubes.
@@ -427,10 +426,10 @@ void cubeDiagnosis(int i){
       cubes[i].setCubeColor(Wheel(convertToByte(bbb, 0, 6)));
       Serial.print("ir on ");
       Serial.print(i);
-      Serial.print(" is triggered with a scaleposition of ");
-      Serial.print(cubes[i].scalePosition);
-      Serial.print(", a cm value of ");
-      Serial.print(cubes[i].calculatedDistance);
+      // Serial.print(" is triggered with a scaleposition of ");
+      // Serial.print(cubes[i].scalePosition);
+      // Serial.print(", a cm value of ");
+      // Serial.print(cubes[i].calculatedDistance);
       Serial.print(", and a irValue of ");
       Serial.print(cubes[i].smoothedIrValue);
       Serial.println();
@@ -440,18 +439,18 @@ void cubeDiagnosis(int i){
       // sendTurnOffCube(i);
     }
 
-    // if(cubes[i].piezoTriggered(piezoThreshold)){
-    //   cubes[i].setCubeColor(255,255,255); //White if tapped
+    if(cubes[i].piezoTriggered(piezoThreshold)){
+      cubes[i].setCubeColor(255,255,255); //White if tapped
 
-    //   Serial.print("Cube ");
-    //   Serial.print(i);
-    //   Serial.print(" is tapped");
-    //   if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
-    //     cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
-    //     Serial.print(" but reed switch was active");
-    //   }
-    //   Serial.println();
-    // }
+      Serial.print("Cube ");
+      Serial.print(i);
+      Serial.print(" is tapped");
+      if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
+        cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
+        Serial.print(" but reed switch was active");
+      }
+      Serial.println();
+    }
 
     // if(cubes[i].shaking()){
     //   cubes[i].setCubeColor(0,255,255);

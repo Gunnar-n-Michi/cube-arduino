@@ -4,7 +4,7 @@
 #include <Arduino.h>
 #include "helpers.h"
 #define SMOOTHINGSIZE 5
-#define REQUIRED_SHAKES 14
+#define REQUIRED_SHAKES 10
 #define IRMAX 550
 
 // class Adafruit_NeoPixel;
@@ -86,7 +86,7 @@ public:
 			irTriggered();
 		}
 
-		// setupPiezoSensitivity();
+		setupPiezoSensitivity();
 
 		for(int i = 0; i<REQUIRED_SHAKES; i++){
 			_tiltSwitchTimeStamp[i] = 0;
@@ -103,8 +103,6 @@ public:
 		isWaitingToRecord = false;
 		isRecording = false;
 		// copyRequestSent = false;
-
-		// setupPiezoSensitivity();
 
 	}
 
@@ -146,7 +144,7 @@ public:
 		bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
 		if(triggered){
 			// Serial.print("shaken at: "); Serial.println(currentTime);
-			setCubeColor(0,0,255);
+			// setCubeColor(0,0,255);
 			_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
 			_currentTiltTimeStampIndex ++;
 			_currentTiltTimeStampIndex %= REQUIRED_SHAKES;
@@ -183,9 +181,9 @@ public:
 		int newPiezoReading = analogRead(_piezo);
 		bool result;
 		if(
-			//abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
-			newPiezoReading > (threshold+_piezoRestDiff)){
-			Serial.print("Tapped with value: "); Serial.println(newPiezoReading);
+			abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
+			// newPiezoReading > (threshold+_piezoRestDiff)){
+			// Serial.print("Tapped with value: "); Serial.println(newPiezoReading);
 			result = true;
 		}else{
 			result = false;
@@ -204,8 +202,8 @@ public:
 			analogRead(_piezo);
 			int value = analogRead(_piezo);
 			int difference = abs(value - lastValue);
-			if( value > maxDifference){
-				maxDifference = value;
+			if( difference > maxDifference){
+				maxDifference = difference;
 			}
 			lastValue = value;
 			delayMicroseconds(150);
