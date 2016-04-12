@@ -25,7 +25,7 @@ private:
 	int _piezoRestDiff;
 	int _lastPiezoValue;
 	int _filteredPiezo;
-	static const float _piezoFilterConstant = 1.0f;
+	static constexpr float _piezoFilterConstant = 1.0f;
 	static const unsigned long _tappTime = 450;
 #define IRTABLESIZE 16
 	static int irMeasurements[][IRTABLESIZE];
