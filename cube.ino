@@ -22,6 +22,9 @@
 #define DOWN  3
 #define LEFT  0
 
+#define REED1DIRECTION RIGHT
+#define REED2DIRECTION UP
+
 #include <Adafruit_NeoPixel.h>//Order matters here. Since the arduino IDE (1.0.6) doesn't allow including libraries in libraries we have to include the neopixels here, before the cube_class.
 #include "cube_class.h"
 
@@ -61,14 +64,14 @@ Cube_class cubes[] = {
   // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
 
   //Shield layout!!!
-  Cube_class(0, A8, A9, 12, 13, 6, 9, IRthreshold),
+  Cube_class(0, A8, A9, 13, 12, 6, 9, IRthreshold),
   Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
-  Cube_class(2, A12, A13, 3, 4, 2, 17, IRthreshold),
+  Cube_class(2, A12, A13, 4, 3, 2, 17, IRthreshold),
   Cube_class(3, A14, A15, 15, 14, 16, 18, IRthreshold),
   Cube_class(4, A0, A1, 24, 26, 53, 51, IRthreshold),
-  Cube_class(5, A2, A3, 28, 30, 40, 42, IRthreshold),
-  Cube_class(6, A4, A5, 32, 38, 34, 50, IRthreshold),
-  Cube_class(7, A6, A7, 46, 48, 52, 49, IRthreshold)
+  Cube_class(5, A2, A3, 30, 28, 40, 42, IRthreshold),
+  Cube_class(6, A4, A5, 38, 32, 34, 50, IRthreshold),
+  Cube_class(7, A6, A7, 48, 46, 52, 49, IRthreshold)
 };
 
 //DELETE LATER! When not needed
@@ -304,7 +307,7 @@ void readCube(int i){
 
   for(int j = 0; j < 2; j++){
     int direction;
-    if(j == 0){direction = RIGHT;}else{direction = UP;} // Set direction for current reed.
+    if(j == 0){direction = REED1DIRECTION;}else{direction = REED2DIRECTION;} // Set direction for current reed.
     int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
     if(!getCopyPair(pair, i, direction)){//Retrieve the pair. Also, We should never handle the reeds on the edges. Hence the if statement.
       if(cubes[i].getReedState(j) == REED_TOUCHING){//Just some test code to visualize when edge reed is triggered
@@ -469,15 +472,15 @@ void cubeDiagnosis(int i){
     
     int reed1 = cubes[i].getReedState(0);
     if(reed1){
-      // Serial.print("Reed 1 on cube ");
-      // Serial.print(i);
-      // Serial.print(" has state: ");
-      // Serial.print(reed1);
-      // Serial.print(" getCopypair returned: ");
+      Serial.print("Reed 1 on cube ");
+      Serial.print(i);
+      Serial.print(" has state: ");
+      Serial.print(reed1);
+      Serial.print(" getCopypair returned: ");
       int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-      getCopyPair(pair, i, RIGHT);
-      // Serial.print(pair[0]);
-      // Serial.println(pair[1]);
+      getCopyPair(pair, i, REED1DIRECTION);
+      Serial.print(pair[0]);
+      Serial.println(pair[1]);
 
       // Serial.print(". Direction is RIGHT");
 
@@ -487,15 +490,15 @@ void cubeDiagnosis(int i){
     }
     int reed2 = cubes[i].getReedState(1);
     if(reed2){
-      // Serial.print("Reed 2 on cube ");
-      // Serial.print(i);
-      // Serial.print(" has state: ");
-      // Serial.print(reed2);
-      // Serial.print(" getCopypair returned: ");
+      Serial.print("Reed 2 on cube ");
+      Serial.print(i);
+      Serial.print(" has state: ");
+      Serial.print(reed2);
+      Serial.print(" getCopypair returned: ");
       int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-      getCopyPair(pair, i, UP);
-      // Serial.print(pair[0]);
-      // Serial.println(pair[1]);
+      getCopyPair(pair, i, REED2DIRECTION);
+      Serial.print(pair[0]);
+      Serial.println(pair[1]);
 
       // Serial.print(". Direction is UP");
 
