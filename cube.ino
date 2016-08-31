@@ -1,15 +1,16 @@
 // #define STRIP_PIN 53
 #define PIXELSPERCUBE 8
+//These are the speeds of the animations
 #define COPYSPEED 100
 #define FADESPEED 32
 
 // #define irMaxDistance 60
 
-///DIAGNOSIS or ACTIVATE_IR
-#define DIAGNOSIS false
-#define ACTIVATE_IR true
+///DIAGNOSIS or PRINT_IR_INFO
+#define DIAGNOSIS true
+  #define PRINT_IR_INFO true
+#define ACTIVATE_IR true   //Applies to both diagnosis and normal mode
 #define SET_AMP_MODE false
-#define MEASURE_IR false
 #define DEBUG
 
 
@@ -198,7 +199,7 @@ void handleSerial(){
         // sendStartRequest();
       }else if(command == '?'){//Setting color
         // delay(6);
-        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy (copying)
           return;
         }
         uint8_t effect = readChar();
@@ -214,7 +215,7 @@ void handleSerial(){
           // cubes[affectedCube].setCubeColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
           // Serial.print("Pitch color set for cube "); Serial.println(affectedCube);
         }
-      }else if(command == 't'){
+      }else if(command == 't'){//Handshake
         newLine == readChar();
           if(affectedCube == 'a' || affectedCube == 'A'){
             sendMessage("a");
@@ -235,7 +236,7 @@ void loop() {
 
   //Continuously dim the leds
   for(int i = 0; i<NUMBEROFCUBES; i++){
-    cubes[i].fadeToMyColor(64);
+    cubes[i].fadeToMyColor(64);//parameter is speed. Lower is faster
     cubes[i].strip.show();
   }
 
@@ -246,13 +247,14 @@ void loop() {
     // cubes[i].pullAnimation(DOWN);
     if(DIAGNOSIS){
       cubeDiagnosis(i);
-    }else if(MEASURE_IR){
-      measureIR(2);  
+    }else if(PRINT_IR_INFO){
+      measureIR(i);  
     }else{
       readCube(i);  
     }
   }
   // delay(3);
+
 
   if(shouldSendStartRequest){
     if(millis() > startRequestSendTime){
@@ -395,9 +397,10 @@ void readCube(int i){
   // }
 
   //Piezo stuff
-  if(/// In some cases we don't want to rercord even if it's triggered.
+  //Should we record
+  if(/// In some cases we don't want to record even if it's triggered.
       cubes[i].piezoTriggered(piezoThreshold)
-      &&  cubes[i].shaking()
+      // &&  cubes[i].shaking()
       && !cubes[i].isWaitingToRecord 
       && !cubes[i].isRecording
       && !cubes[i].getReedState(0)//provide against false tap trigger when touching two cubes.
@@ -426,92 +429,103 @@ void readCube(int i){
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
     int bbb = map(cubes[i].smoothedIrValue, 550, IRthreshold, 0, 6);
-      cubes[i].setCubeColor(Wheel(convertToByte(bbb, 0, 6)));
-      Serial.print("ir on ");
-      Serial.print(i);
-      // Serial.print(" is triggered with a scaleposition of ");
-      // Serial.print(cubes[i].scalePosition);
-      // Serial.print(", a cm value of ");
-      // Serial.print(cubes[i].calculatedDistance);
-      Serial.print(", and a irValue of ");
-      Serial.print(cubes[i].smoothedIrValue);
-      Serial.println();
-      // sendTrigger(i, cubes[i].irValue);
-      // delay(2000);
-    }else{
-      // sendTurnOffCube(i);
+    cubes[i].setCubeColor(Wheel(convertToByte(bbb, 0, 6)));
+    Serial.print("ir on ");
+    Serial.print(i);
+    // Serial.print(" is triggered with a scaleposition of ");
+    // Serial.print(cubes[i].scalePosition);
+    // Serial.print(", a cm value of ");
+    // Serial.print(cubes[i].calculatedDistance);
+    Serial.print(", and a irValue of ");
+    Serial.print(cubes[i].smoothedIrValue);
+    Serial.println();
+    // sendTrigger(i, cubes[i].irValue);
+    // delay(2000);
+  }else{
+    // sendTurnOffCube(i);
+  }
+
+  if(cubes[i].piezoTriggered(piezoThreshold)){
+    cubes[i].setCubeColor(255,255,255); //White if tapped
+
+    Serial.print("Cube ");
+    Serial.print(i);
+    Serial.print(" is tapped");
+    if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
+      cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
+      Serial.print(" but reed switch was active");
     }
+    Serial.println();
+  }
 
-    if(cubes[i].piezoTriggered(piezoThreshold)){
-      cubes[i].setCubeColor(255,255,255); //White if tapped
+  // if(cubes[i].shaking()){
+  //   cubes[i].setCubeColor(0,255,255);
 
-      Serial.print("Cube ");
-      Serial.print(i);
-      Serial.print(" is tapped");
-      if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
-        cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
-        Serial.print(" but reed switch was active");
-      }
-      Serial.println();
-    }
+  //   Serial.print("Cube ");
+  //   Serial.print(i);
+  //   Serial.print(" had the tiltSwitch excited.");
+  //   Serial.println();
+  // }
 
-    // if(cubes[i].shaking()){
-    //   cubes[i].setCubeColor(0,255,255);
+  // if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
+  //   cubes[i].setCubeColor(255,0,255); //
+  // }
 
-    //   Serial.print("Cube ");
-    //   Serial.print(i);
-    //   Serial.print(" had the tiltSwitch excited.");
-    //   Serial.println();
-    // }
+  cubes[i].updateReedStates();
+  
+  int reed1 = cubes[i].getReedState(0);
+  if(reed1){
+    Serial.print("Reed 1 on cube ");
+    Serial.print(i);
+    Serial.print(" has state: ");
+    Serial.print(reed1);
+    Serial.print(" getCopypair returned: ");
+    int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
+    getCopyPair(pair, i, REED1DIRECTION);
+    Serial.print(pair[0]);
+    Serial.println(pair[1]);
 
-    // if(cubes[i].shaking() && cubes[i].piezoTriggered(piezoThreshold)){
-    //   cubes[i].setCubeColor(255,0,255); //
-    // }
+    // Serial.print(". Direction is RIGHT");
 
-    cubes[i].updateReedStates();
-    
-    int reed1 = cubes[i].getReedState(0);
-    if(reed1){
-      Serial.print("Reed 1 on cube ");
-      Serial.print(i);
-      Serial.print(" has state: ");
-      Serial.print(reed1);
-      Serial.print(" getCopypair returned: ");
-      int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-      getCopyPair(pair, i, REED1DIRECTION);
-      Serial.print(pair[0]);
-      Serial.println(pair[1]);
+    //touchAnimation(pair[0], pair[1]);
+    cubes[pair[0]].pullAnimation(RIGHT);
+    cubes[pair[1]].pullAnimation(RIGHT);
+  }
+  int reed2 = cubes[i].getReedState(1);
+  if(reed2){
+    Serial.print("Reed 2 on cube ");
+    Serial.print(i);
+    Serial.print(" has state: ");
+    Serial.print(reed2);
+    Serial.print(" getCopypair returned: ");
+    int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
+    getCopyPair(pair, i, REED2DIRECTION);
+    Serial.print(pair[0]);
+    Serial.println(pair[1]);
 
-      // Serial.print(". Direction is RIGHT");
+    // Serial.print(". Direction is UP");
 
-      //touchAnimation(pair[0], pair[1]);
-      cubes[pair[0]].pullAnimation(RIGHT);
-      cubes[pair[1]].pullAnimation(RIGHT);
-    }
-    int reed2 = cubes[i].getReedState(1);
-    if(reed2){
-      Serial.print("Reed 2 on cube ");
-      Serial.print(i);
-      Serial.print(" has state: ");
-      Serial.print(reed2);
-      Serial.print(" getCopypair returned: ");
-      int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-      getCopyPair(pair, i, REED2DIRECTION);
-      Serial.print(pair[0]);
-      Serial.println(pair[1]);
-
-      // Serial.print(". Direction is UP");
-
-      cubes[pair[0]].pullAnimation(UP);
-      cubes[pair[1]].pullAnimation(UP);
-      //touchAnimation(pair[0], pair[1]);
-    }
+    cubes[pair[0]].pullAnimation(UP);
+    cubes[pair[1]].pullAnimation(UP);
+    //touchAnimation(pair[0], pair[1]);
+  }
     
 }
 
 void measureIR(int i){
-  // Serial.print("IR is: ");
-  Serial.println(cubes[i].readIr());
+  if(i == 0){
+    Serial.print("Raw IR reading ->    ");
+  }
+  
+  Serial.print(i);
+  Serial.print(": ");
+  Serial.print(cubes[i].readIr());
+  Serial.print('\t');
+  if(i + 1 >= NUMBEROFCUBES ){
+    Serial.println();
+  }
+
+
 }
 
 void printNeighbours(){
@@ -609,7 +623,7 @@ void sendRecordRequest(int cubeNumber){
   //Hmmm. Is this the right place to handle the busy flag?
   Cube_class::someCubeIsBusy = true;
 
-  //Make sure that the sequncer is not started by some queued startrequest.
+  //Make sure that the sequencer is not started by some queued startrequest.
   shouldSendStartRequest = false;
 
   Serial.write('#');
@@ -622,7 +636,7 @@ void sendCopyRequest(int sourceCube,int destinationCube){
   if(destinationCube == -1){//Not thourough test, but we only expect good values, besides getting -1 when an edge reed is triggered.
     return;
   }
-  //First. Make sure that the sequncer is not started by some queued startrequest.
+  //First. Make sure that the sequencer is not started by some queued startrequest.
   shouldSendStartRequest = false;
 
   // cubes[sourceCube].copyRequestSent = true;

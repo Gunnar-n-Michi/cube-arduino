@@ -3,9 +3,14 @@
 
 #include <Arduino.h>
 #include "helpers.h"
-#define SMOOTHINGSIZE 5
+#define SMOOTHINGSIZE 10
 #define REQUIRED_SHAKES 10
 #define IRMAX 550
+
+//default value
+#ifndef COPYSPEED
+#define COPYSPEED 100
+#endif
 
 // class Adafruit_NeoPixel;
 
@@ -52,7 +57,7 @@ public:
 	static bool sharedIsRecording;
 	static bool someCubeIsBusy;
 
-	bool cubeOffVerified;
+	bool cubeOffVerified; //Indicates if host computer has received acknowledgement for off message
 	bool isWaitingToRecord;
 	bool isRecording;
 	// bool copyRequestSent;
@@ -72,15 +77,15 @@ public:
 		pinMode(_reed2, INPUT);
 		digitalWrite(_reed2, HIGH);
 
-		pinMode(_tiltSwitch, INPUT);
-		digitalWrite(_tiltSwitch, HIGH);
+
+		
 
 		myColor[0] = 0;
 		myColor[1] = 0;
 		myColor[2] = 0;
 
 		_firstPixel = 0;
-		_currentTiltTimeStampIndex = 0;
+		
 
 		for(int i = 0; i<SMOOTHINGSIZE*2; i++){//This is to fill the moving average with values.
 			irTriggered();
@@ -88,9 +93,15 @@ public:
 
 		setupPiezoSensitivity();
 
-		for(int i = 0; i<REQUIRED_SHAKES; i++){
-			_tiltSwitchTimeStamp[i] = 0;
-		}
+		//Tiltswitch stuff
+		// pinMode(_tiltSwitch, INPUT);
+		// digitalWrite(_tiltSwitch, HIGH);
+		//_currentTiltTimeStampIndex = 0;
+
+		// //An array of the latest shake timestamps.
+		// for(int i = 0; i<REQUIRED_SHAKES; i++){
+		// 	_tiltSwitchTimeStamp[i] = 0;
+		// }
 
 		_lastPiezoValue = analogRead(_piezo);
 
@@ -138,23 +149,27 @@ public:
 
 	//////SENSOR FUNCTIONS
 
-	bool shaking(){
-		// Serial.println((_invertedTiltSwitch xor !digitalRead(_tiltSwitch)));
-		unsigned long currentTime = millis();
-		bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
-		if(triggered){
-			// Serial.print("shaken at: "); Serial.println(currentTime);
-			// setCubeColor(0,0,255);
-			_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
-			_currentTiltTimeStampIndex ++;
-			_currentTiltTimeStampIndex %= REQUIRED_SHAKES;
 
-			if(currentTime - _tiltSwitchTimeStamp[_currentTiltTimeStampIndex] <= _tappTime){
-				return true;
-			}
-		}	
-		return false;
-	}
+	//We don't use the tiltswitches anymore. vibration piezos instead. They are still in the hardware though.
+	//If you want to use the tiltswitches, make sure they are configured to use pullup resistors.
+
+	// bool shaking(){
+	// 	// Serial.println((_invertedTiltSwitch xor !digitalRead(_tiltSwitch)));
+	// 	unsigned long currentTime = millis();
+	// 	bool triggered = _invertedTiltSwitch xor !digitalRead(_tiltSwitch);
+	// 	if(triggered){
+	// 		// Serial.print("shaken at: "); Serial.println(currentTime);
+	// 		// setCubeColor(0,0,255);
+	// 		_tiltSwitchTimeStamp[_currentTiltTimeStampIndex] = currentTime; 
+	// 		_currentTiltTimeStampIndex ++;
+	// 		_currentTiltTimeStampIndex %= REQUIRED_SHAKES;
+
+	// 		if(currentTime - _tiltSwitchTimeStamp[_currentTiltTimeStampIndex] <= _tappTime){
+	// 			return true;
+	// 		}
+	// 	}	
+	// 	return false;
+	// }
 
 	// Original Piezotriggered
 	// bool piezoTriggered(int threshold){
@@ -221,12 +236,11 @@ public:
 	}
 
 	bool irTriggered(){
-		// if(millis()-lastIrRead > 0){
 			lastIrRead = millis();
 
 			//Moving average part
 			_total -= _irReadings[_irIndex];
-			analogRead(_irPin);
+			analogRead(_irPin);//Read one time before to make sure the analogRead has settled before using the value.
 			// delayMicroseconds(50);
 			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
 			_irReadings[_irIndex] = analogRead(_irPin);
@@ -239,23 +253,27 @@ public:
 
 			smoothedIrValue = _total/SMOOTHINGSIZE;
 
-			//Lookup table part
+			// Lookup table part
 			// calculates the variable calculatedDistance;
+			// First finds the closest values above and below in the table.
+			// Then interpolates between those two.
+			// Be aware that the table has and inverse relation from measurements to distance (cm)
 			for(int i = 0; i < IRTABLESIZE; i++){
 				if(smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
 					// Serial.print("Value in lookup matched: ");
 					// Serial.print(value);Serial.print("on index");Serial.print(i); Serial.print(" ");
 					// Serial.println(irMeasurements[0][i]);
-					if(i == 0){//Is the sensed value greater than the highest premeausured one?
+					if(i == 0){//Is the sensed value greater than the highest premeasured one?
+						//Simply pick the first distance value in the table.
 						calculatedDistance = irMeasurements[1][0];
 						// Serial.println("was at first index in irMeasurements. breaking the loop!");
 						break;
 					}
-					int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i];
+					int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i]; //The difference between the two premeasured values
 					// Serial.print("measureDifference is: "); Serial.println( measureDifference);
-					int deltaValue = smoothedIrValue - irMeasurements[0][i];
+					int deltaValue = smoothedIrValue - irMeasurements[0][i];//how much higher than the premeasured value below
 					// Serial.print("deltaValue is: "); Serial.println( deltaValue);
-					float factor = (float) deltaValue/measureDifference;
+					float factor = (float) deltaValue/measureDifference; //precentage between the lower and higher premeasured values
 					// Serial.print("factor is: "); Serial.println( factor);
 					int deltaDistance = factor * (irMeasurements[1][i] - irMeasurements[1][i-1]);
 					// Serial.print("deltaDistance is: "); Serial.println( deltaDistance);
@@ -267,11 +285,6 @@ public:
 			}
 			// _irReadings[_irIndex] = calculatedDistance;
 
-			// _irReadings[_irIndex] = 0.00011842022*value*value - 0.2028297207*value + 92.1338251;
-			// _irReadings[_irIndex] = 0.000000001406137854*value*value*value*value - 0.00000362383338*value*value*value + 0.003084435829*value*value - 1.169486111*value + 200.280207;
-			//2 degree polynomial regression: 1.1842022·10-4 x2 - 2.028297207·10-1 x + 92.1338251;
-			//4 degree polynomial regression: 1.406137854·10-9 x4 - 3.62383338·10-6 x3 + 3.084435829·10-3 x2 - 1.169486111 x + 200.280207
-			
 			////TESTCODE
 			// if(_cubeNumber == 0){
 			// 	Serial.println(_irReadings[_irIndex]);
@@ -280,11 +293,12 @@ public:
 			
 
 			
-
+			//What is this?????
+			//Shouldn't we map from distance to scale???
 			lastScalePosition = scalePosition;
 			scalePosition = constrain(map(smoothedIrValue, IRMAX, _threshold+40, 0, 5), 0,5);
 
-			unsigned long endStamp= millis();
+			unsigned long endStamp = millis();
 
 			// Serial.print("Running time of irTriggered: ");Serial.println(endStamp - lastIrRead);
 
@@ -292,7 +306,6 @@ public:
 				return true;
 			}
 			return false;
-		// }
 	}
 
 	int readIr(){
@@ -438,6 +451,7 @@ public:
 		}
 	}
 
+	//Lower value of fadeSpeed means faster fade.
 	void fadeToMyColor(int fadeSpeed){
 		for(int j=_firstPixel; j < _firstPixel + PIXELSPERCUBE; j++) {
 			uint32_t extractColor = strip.getPixelColor(j);
@@ -467,7 +481,7 @@ public:
 		}
 	}
 
-	void pullAnimation(int direction, int shift = 0){//TODO: Make this animation beautiful
+	void pullAnimation(int direction, int shift = 0){
 		
 		//Continuously dim pixels. This part updates every time the function is called
 		// decreaseBrightness(64);
