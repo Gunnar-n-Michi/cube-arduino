@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include "helpers.h"
-#define SMOOTHINGSIZE 10
+#define SMOOTHINGSIZE 2
 #define REQUIRED_SHAKES 10
 #define IRMAX 550
 
@@ -48,6 +48,10 @@ public:
 	int lastScalePosition;
 	int calculatedDistance;
 	int smoothedIrValue;
+	int colorIntensity;
+
+	int piezoDifference;
+
 	unsigned long recordStamp;
 	unsigned long lastIrRead;
 	unsigned long lastIrMessage;
@@ -92,6 +96,7 @@ public:
 		}
 
 		setupPiezoSensitivity();
+		_lastPiezoValue = analogRead(_piezo);
 
 		//Tiltswitch stuff
 		// pinMode(_tiltSwitch, INPUT);
@@ -102,8 +107,6 @@ public:
 		// for(int i = 0; i<REQUIRED_SHAKES; i++){
 		// 	_tiltSwitchTimeStamp[i] = 0;
 		// }
-
-		_lastPiezoValue = analogRead(_piezo);
 
 		recordStamp = millis();
 		lastIrRead = millis();
@@ -145,6 +148,8 @@ public:
 			}
 			return _cubeNumber-1;
 		}
+
+		return -1;
 	}
 
 	//////SENSOR FUNCTIONS
@@ -191,12 +196,12 @@ public:
 
 	// A version that looks for big difference between two subsequent readings. Aims to better detect the spiky voltage variations that are rendered by piezo taps.
 	bool piezoTriggered(int threshold){
-		analogRead(_piezo);
+		// analogRead(_piezo);
 		// delay(1);
 		int newPiezoReading = analogRead(_piezo);
 		bool result;
-		if(
-			abs(newPiezoReading - _lastPiezoValue) > threshold + _piezoRestDiff){
+		piezoDifference = abs(newPiezoReading - _lastPiezoValue);
+		if(piezoDifference > threshold + _piezoRestDiff){
 			// newPiezoReading > (threshold+_piezoRestDiff)){
 			// Serial.print("Tapped with value: "); Serial.println(newPiezoReading);
 			result = true;
@@ -214,6 +219,7 @@ public:
 		analogRead(_piezo);
 		int lastValue = analogRead(_piezo);
 		for(int i = 0; i < 1000; i++){
+			
 			analogRead(_piezo);
 			int value = analogRead(_piezo);
 			int difference = abs(value - lastValue);
@@ -231,7 +237,7 @@ public:
 	}
 
 	int readPiezo(){
-		analogRead(_piezo);
+		// analogRead(_piezo);
 		return analogRead(_piezo);
 	}
 
@@ -240,10 +246,13 @@ public:
 
 			//Moving average part
 			_total -= _irReadings[_irIndex];
-			analogRead(_irPin);//Read one time before to make sure the analogRead has settled before using the value.
+			// analogRead(_irPin);//Read one time before to make sure the analogRead has settled before using the value.
 			// delayMicroseconds(50);
-			// _irReadings[_irIndex] = analogRead(_irPin); //(int) (527.41 * 9.5 * 3/(analogRead(_irPin)))-15;
-			_irReadings[_irIndex] = analogRead(_irPin);
+			int reading = analogRead(_irPin);
+
+			///NOTE: This part tries to deal with the weird measure offset related to the voltage drop when driving the LEDs.
+			int voltageBias = map(colorIntensity, 0, 255, 0, 60);
+			_irReadings[_irIndex] = reading - voltageBias;
 			_total += _irReadings[_irIndex];
 			_irIndex++;
 
@@ -258,31 +267,31 @@ public:
 			// First finds the closest values above and below in the table.
 			// Then interpolates between those two.
 			// Be aware that the table has and inverse relation from measurements to distance (cm)
-			for(int i = 0; i < IRTABLESIZE; i++){
-				if(smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
-					// Serial.print("Value in lookup matched: ");
-					// Serial.print(value);Serial.print("on index");Serial.print(i); Serial.print(" ");
-					// Serial.println(irMeasurements[0][i]);
-					if(i == 0){//Is the sensed value greater than the highest premeasured one?
-						//Simply pick the first distance value in the table.
-						calculatedDistance = irMeasurements[1][0];
-						// Serial.println("was at first index in irMeasurements. breaking the loop!");
-						break;
-					}
-					int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i]; //The difference between the two premeasured values
-					// Serial.print("measureDifference is: "); Serial.println( measureDifference);
-					int deltaValue = smoothedIrValue - irMeasurements[0][i];//how much higher than the premeasured value below
-					// Serial.print("deltaValue is: "); Serial.println( deltaValue);
-					float factor = (float) deltaValue/measureDifference; //precentage between the lower and higher premeasured values
-					// Serial.print("factor is: "); Serial.println( factor);
-					int deltaDistance = factor * (irMeasurements[1][i] - irMeasurements[1][i-1]);
-					// Serial.print("deltaDistance is: "); Serial.println( deltaDistance);
-					calculatedDistance = irMeasurements[1][i-1] + deltaDistance;
-					// Serial.print("calculatedDistance is: "); Serial.println( calculatedDistance);
+			// for(int i = 0; i < IRTABLESIZE; i++){
+			// 	if(smoothedIrValue > irMeasurements[0][i]){//Is between current and previous index
+			// 		// Serial.print("Value in lookup matched: ");
+			// 		// Serial.print(value);Serial.print("on index");Serial.print(i); Serial.print(" ");
+			// 		// Serial.println(irMeasurements[0][i]);
+			// 		if(i == 0){//Is the sensed value greater than the highest premeasured one?
+			// 			//Simply pick the first distance value in the table.
+			// 			calculatedDistance = irMeasurements[1][0];
+			// 			// Serial.println("was at first index in irMeasurements. breaking the loop!");
+			// 			break;
+			// 		}
+			// 		int measureDifference = irMeasurements[0][i-1] - irMeasurements[0][i]; //The difference between the two premeasured values
+			// 		// Serial.print("measureDifference is: "); Serial.println( measureDifference);
+			// 		int deltaValue = smoothedIrValue - irMeasurements[0][i];//how much higher than the premeasured value below
+			// 		// Serial.print("deltaValue is: "); Serial.println( deltaValue);
+			// 		float factor = (float) deltaValue/measureDifference; //precentage between the lower and higher premeasured values
+			// 		// Serial.print("factor is: "); Serial.println( factor);
+			// 		int deltaDistance = factor * (irMeasurements[1][i] - irMeasurements[1][i-1]);
+			// 		// Serial.print("deltaDistance is: "); Serial.println( deltaDistance);
+			// 		calculatedDistance = irMeasurements[1][i-1] + deltaDistance;
+			// 		// Serial.print("calculatedDistance is: "); Serial.println( calculatedDistance);
 
-					break;
-				}
-			}
+			// 		break;
+			// 	}
+			// }
 			// _irReadings[_irIndex] = calculatedDistance;
 
 			////TESTCODE
@@ -295,8 +304,10 @@ public:
 			
 			//What is this?????
 			//Shouldn't we map from distance to scale???
+			//Apparently not. Since this seems to work better...
 			lastScalePosition = scalePosition;
 			scalePosition = constrain(map(smoothedIrValue, IRMAX, _threshold+40, 0, 5), 0,5);
+			// scalePosition = constrain(map(calculatedDistance, 15, 50, 0, 5), 0, 5);
 
 			unsigned long endStamp = millis();
 
@@ -309,7 +320,16 @@ public:
 	}
 
 	int readIr(){
-		analogRead(_irPin);
+		// analogRead(_irPin);
+		int value = analogRead(_irPin);
+		int voltageBias = map(colorIntensity, 0, 255, 0, 60);
+		return value - voltageBias;
+	}
+
+	int readSmoothedIr(){
+		// analogRead(_irPin);
+		irTriggered();
+		return smoothedIrValue;
 		return analogRead(_irPin);
 	}
 
@@ -408,7 +428,7 @@ public:
 
 	void setCubeColor(uint32_t color){
 		for(int i = _firstPixel; i<_firstPixel + PIXELSPERCUBE; i++){
-		strip.setPixelColor(i, color);
+			strip.setPixelColor(i, color);
 		}
 		// strip.show();
 	}
@@ -417,11 +437,37 @@ public:
 		for(int i = _firstPixel; i<_firstPixel + PIXELSPERCUBE; i++){
 			strip.setPixelColor(i, r, g, b);
 		}
+
+		colorIntensity = (r + g + b)/3;
 		// strip.show();
 	}
 
 	void clear(){
 		setCubeColor(0);
+	}
+
+	// Input a value 0 to 255 to get a color value.
+	// The colours are a transition r - g - b - back to r.
+	void setColorFromRainbowByte(uint8_t WheelPos) {
+		WheelPos = 255 - WheelPos;
+		uint32_t color;
+
+		if(WheelPos < 85) {
+			color = strip.Color(255 - WheelPos * 3, 0, WheelPos * 3);
+		} else if(WheelPos < 170) {
+		WheelPos -= 85;
+			color = strip.Color(0, WheelPos * 3, 255 - WheelPos * 3);
+		} else {
+		WheelPos -= 170;
+			color = strip.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
+		}
+
+		for(int i = _firstPixel; i<_firstPixel + PIXELSPERCUBE; i++){
+			strip.setPixelColor(i, color);
+		}
+
+		//Assume the intensity is same for each color. So that would mean this function sets the color to a total of 255.
+		colorIntensity = 255/3;
 	}
 
 
@@ -453,10 +499,11 @@ public:
 
 	//Lower value of fadeSpeed means faster fade.
 	void fadeToMyColor(int fadeSpeed){
+		int currentColor[3];
 		for(int j=_firstPixel; j < _firstPixel + PIXELSPERCUBE; j++) {
 			uint32_t extractColor = strip.getPixelColor(j);
+			
 			//Depack the colors
-			int currentColor[3];
 			currentColor[0] = (uint8_t)(extractColor >> 16),
 			currentColor[1] = (uint8_t)(extractColor >>  8),
 			currentColor[2] = (uint8_t)extractColor;
@@ -479,12 +526,12 @@ public:
 			strip.setPixelColor(j, currentColor[0], currentColor[1], currentColor[2]);
 			// setCubeColor(currentColor[0], currentColor[1], currentColor[2]);
 		}
+		colorIntensity = (currentColor[0] + currentColor[1] + currentColor[2])/3;
 	}
 
 	void pullAnimation(int direction, int shift = 0){
 		
 		//Continuously dim pixels. This part updates every time the function is called
-		// decreaseBrightness(64);
 		fadeToMyColor(64);
 
 		int side1position, side2position;
@@ -514,6 +561,8 @@ public:
 		// setCubeColor(255,0,255);
 		int red = 255.0f * (sin((float) millis()/100.0f)+1)/2;
 		setCubeColor(red, 0, 0);
+
+		colorIntensity = red/3;
 	}
 
 

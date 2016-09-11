@@ -7,17 +7,26 @@
 // #define irMaxDistance 60
 
 ///DIAGNOSIS or PRINT_IR_INFO
-#define DIAGNOSIS true
-  #define PRINT_IR_INFO true
+#define NORMAL_MODE                   0
+#define DIAGNOSIS_MODE                1
+#define IDLE_MODE                     2
+#define SET_AMP_MODE                  3
+#define PRINT_IR_INFO_MODE            4
+#define PLOT_PIEZOS_MODE              5
+#define PLOT_IR_MODE                  6
+#define PLOT_IR_WITH_RAINBOW_MODE     7
+#define SCREENSAVER_MODE              8
+#define FAKE_CUBES_MODE               9
+
+#define MODE NORMAL_MODE
+
 #define ACTIVATE_IR true   //Applies to both diagnosis and normal mode
-#define SET_AMP_MODE false
+
 #define DEBUG
-
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////DON*T FORGET TO SET GRID SIZES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #define GRID_SIZE_X 2
-#define GRID_SIZE_Y 4
+#define GRID_SIZE_Y 2
 #define UP    1
 #define RIGHT 2
 #define DOWN  3
@@ -32,13 +41,9 @@
 const int NUMBEROFCUBES = GRID_SIZE_X * GRID_SIZE_Y;
 const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
-// int currentRecordingCube;
-
-
-
-const int piezoThreshold = 50;
+const int piezoThreshold = 400;
 const int dimScaleFactor = 4;
-const int IRthreshold = 235;
+const int IRthreshold = 250;
 const int irMaxDistance = 60;
 
 // Parameter 1 = number of pixels in strip
@@ -53,7 +58,18 @@ const int irMaxDistance = 60;
 Cube_class cubes[] = {
       //(cubeNumber, ir, piezo, reed, reed, ledPin, tiltSwitch, IRthreshold,) invertedTilt, stripOffset
   
-  
+#if MODE == FAKE_CUBES_MODE
+  //Fake layout. This is since we might use different boards with less pins. And we don't use the pins so just pick some.
+  Cube_class(0, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(1, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(2, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(3, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(4, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(5, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(6, A0, A1, 1, 2, 3, 4, IRthreshold),
+  Cube_class(7, A0, A1, 1, 2, 3, 4, IRthreshold)
+#else
+
   //Handmade layout
   // Cube_class(0, A8, A0, 2, 3, 46, 22, 55),
   // Cube_class(1, A9, A1, 4, 5, 47, 23, 55),
@@ -65,64 +81,125 @@ Cube_class cubes[] = {
   // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
 
   //Shield layout!!!
-  Cube_class(0, A8, A9, 13, 12, 6, 9, IRthreshold),
-  Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
-  Cube_class(2, A12, A13, 4, 3, 2, 17, IRthreshold),
-  Cube_class(3, A14, A15, 15, 14, 16, 18, IRthreshold),
-  Cube_class(4, A0, A1, 24, 26, 53, 51, IRthreshold),
-  Cube_class(5, A2, A3, 30, 28, 40, 42, IRthreshold),
-  Cube_class(6, A4, A5, 38, 32, 34, 50, IRthreshold),
-  Cube_class(7, A6, A7, 48, 46, 52, 49, IRthreshold)
+  // Cube_class(0, A8, A9, 13, 12, 6, 9, IRthreshold),
+  // Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
+  // Cube_class(2, A12, A13, 4, 3, 2, 17, IRthreshold),
+  // Cube_class(3, A14, A15, 15, 14, 16, 18, IRthreshold),
+  Cube_class(0, A0, A1, 24, 26, 53, 51, IRthreshold),
+  Cube_class(1, A2, A3, 30, 28, 40, 42, IRthreshold),
+  Cube_class(2, A4, A5, 38, 32, 34, 50, IRthreshold),
+  Cube_class(3, A6, A7, 48, 46, 52, 49, IRthreshold)
+#endif
 };
 
-//DELETE LATER! When not needed
+
+int debugColorCycleProgress = 0;
+int debugColorCycleCurrentColor = 0;
 int irReading = 0;
 char inByte;
 unsigned long startRequestSendTime;
 bool shouldSendStartRequest = false;
+
+uint8_t rainbowCounter = 0;
 
 void setup() {
   Serial.begin(9600);
   // strip.begin();
   // strip.show(); // Initialize all pixels to 'off'
 
-  for (int i = 0; i < NUMBEROFCUBES; ++i)
-  {
-    cubes[i].init();
+  // THINGS TO BE AWARE OF:
+  // The wiring and electronics in this project leaves a lot to ask for. I, Gunnar, take full responsibility for this...
+  // The ethernet cables doesn't seem to allow enough current to keep the vcc from doing a voltage drop when lighting the LEDs.
+  // This means that the ir sensors will get confused. When the voltage drop on the power line occurs, the analog value 
+  // from the sensors will make a jump to a higher value.
+  //
+  // The data line on the led strips results in noise for the piezo. It's observable if you measure with oscillocope
+  // and turn on/off the "Continuously dim the leds" part of the main loop.
+  //
+  // The piezos seem to make a weird spike in the start of the sketch. Now this is handled by ignoring the piezos until a
+  // few seconds has passed since startup. It would be nice to know the reason to this behaviour though. The piezos should also be connected
+  // through a voltage division circuit which is not the case.
+
+  //if fake mode we have no cubes connected, so don't try to interface them.
+  if(MODE != FAKE_CUBES_MODE){
+    for (int i = 0; i < NUMBEROFCUBES; ++i)
+    {
+      cubes[i].init();
+    }
   }
   delay(500);
 
-  //TODO: implement handshake here
-  if(!DIAGNOSIS){
-    // establishContact();
-    sendMessage(F("Starting arduino sketch of DOOM!"));
-    
+  if(true || MODE){//Don't print if normal mode
+    sendMessage(F("Starting Musical Cubes Arduino Firmware.")); 
   }else{
     // delay(2000);
     // printNeighbours();
    // showCalibrationValues();
   }
 }
+void loop() {
 
-// void showCalibrationValues(){
-//   for(int i = 0; i < NUMBEROFCUBES; i++){
-//     Serial.print("Cube "); Serial.println(i); Serial.print('\t');
-//     Serial.print(cubes[i].)
-
-//   }
-// }
-
-void establishContact() {
-  while (Serial.available() <= 0) {
-    // rainbowCycle(20);
-    Serial.print('A');   // send a capital A
-    delay(20);
+  if(MODE == SET_AMP_MODE){
+    set_amp();
+    return;
   }
-  // setCubeColor(0, 0,0,0);
+
+  if(MODE == FAKE_CUBES_MODE){
+    fakeSerial();
+  }else{
+    handleSerial();
+  }
+
+  //CHECK SENSORS!!!!
+
+  //Modes (functions) that dosn't loop the cubes "internally"
+  for (int i = 0; i < NUMBEROFCUBES; ++i)
+  {
+    switch(MODE){
+      case IDLE_MODE:
+        break;
+      case NORMAL_MODE:
+        readCube(i);
+        dimLeds(i);
+        break;
+      case DIAGNOSIS_MODE:
+        cubeDiagnosis(i);
+        dimLeds(i);
+        break;
+      case PRINT_IR_INFO_MODE:
+        measureIR(i);
+        break;
+      case SCREENSAVER_MODE:
+        cubes[i].setColorFromRainbowByte(rainbowCounter++);
+        delay(10);
+        break;
+    }
+  }
+  // Modes that loops the cubes internally
+  switch (MODE){
+    case PLOT_PIEZOS_MODE:
+      plotPiezos();
+      break;
+    case PLOT_IR_MODE:
+      plotIr();
+      break;
+    case PLOT_IR_WITH_RAINBOW_MODE:
+      plotIr();
+      debugColorCycle();
+  }
+
+
+  if(shouldSendStartRequest){
+    if(millis() > startRequestSendTime){
+      shouldSendStartRequest = false;
+      sendStartRequest();
+    }
+  }
+
 }
 
-void handleSerial(){
-    //Have we received any stuff?????? If so, do cool shit!
+void fakeSerial(){
+  //Have we received any stuff?????? If so, fake connected cubes!
   if(Serial.available()>= 2){
     if(Serial.read() == '#'){
       uint8_t newLine;
@@ -136,54 +213,33 @@ void handleSerial(){
         uint8_t effect = readChar();
         newLine = readChar();
         if(newLine == '\n'){
-          uint32_t color = Wheel(effect);
-          // cubes[affectedCube].setCubeColor(color);
-          cubes[affectedCube].setCubeColor(255,255,255);
-          //Depack the colors
-          int
-          r = (uint8_t)(color >> 16),
-          g = (uint8_t)(color >>  8),
-          b = (uint8_t)color;
-          cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
           cubes[affectedCube].triggerStamp = millis();
-          // Serial.print("Cube triggered "); Serial.println(affectedCube);
         }
       }else if(command == 92){//Cubeoffverified
-        // delay(6);
         newLine = readChar();
         if(newLine == '\n'){
           cubes[affectedCube].cubeOffVerified = true;
-          cubes[affectedCube].setMyColor(0, 0, 0);
-          // Serial.print("cubeOffVerified "); Serial.println(affectedCube);
         }
       }else if(command == '['){//Recording started
+        //someCubeIsBusy is already switched in sendRecordRequest
         newLine = readChar();
         if(newLine == '\n'){
           cubes[affectedCube].isWaitingToRecord = false;
-          // Cube_class::sharedIsWaitingToRecord = false;
-          cubes[affectedCube].isRecording = true; 
-          // Cube_class::sharedIsRecording = true;    
+          cubes[affectedCube].isRecording = true;
           cubes[affectedCube].recordStamp = millis();
-          // Serial.print("recording started on cube "); Serial.println(affectedCube);
         }
       }else if(command == ']'){//Recording finished
         newLine = readChar();
         if(newLine == '\n'){
           cubes[affectedCube].isRecording = false;
-          // Cube_class::sharedIsRecording = false;   
-          cubes[affectedCube].setCubeColor(0,255,0); 
-          Cube_class::someCubeIsBusy = false; 
-          // Serial.print("recording finished on cube "); Serial.println(affectedCube);
+          Cube_class::someCubeIsBusy = false;
         }
       }else if(command == '!'){//Recording timeout
         newLine = readChar();
         if(newLine == '\n'){
           cubes[affectedCube].isWaitingToRecord = false;
-          // Cube_class::sharedIsWaitingToRecord = false;
           cubes[affectedCube].isRecording = false;//Just in case!!
           Cube_class::someCubeIsBusy = false;
-          // Cube_class::sharedIsRecording = false; 
-          // Serial.print("recording timeout on cube "); Serial.println(affectedCube);
         }
       }else if(command == '*'){//Copying confirmed
         uint8_t affectedCube2 = readChar();
@@ -205,6 +261,89 @@ void handleSerial(){
         uint8_t effect = readChar();
         newLine = readChar();
         if(newLine == '\n'){
+        }
+      }else if(command == 't'){//Handshake
+        newLine == readChar();
+          if(affectedCube == 'a' || affectedCube == 'A'){
+            sendMessage("a");
+            resetToInitState();
+            // Should we perhaps clear the serial buffer?
+            // Serial.clear();
+          }
+      }
+    }
+  }
+}
+
+void handleSerial(){
+  //Have we received any stuff?????? If so, do cool shit!
+  if(Serial.available()>= 2){
+    if(Serial.read() == '#'){
+      uint8_t newLine;
+      uint8_t command = readChar();
+      uint8_t affectedCube = readChar();
+      if(command == '/'){//Trigger cube
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
+          return;
+        }
+        uint8_t effect = readChar();
+        newLine = readChar();
+        if(newLine == '\n'){
+          uint32_t color = Wheel(effect);
+          // cubes[affectedCube].setCubeColor(color);
+          // Trigger white
+          cubes[affectedCube].setCubeColor(255,255,255);
+          //Depack the colors
+          int
+          r = (uint8_t)(color >> 16),
+          g = (uint8_t)(color >>  8),
+          b = (uint8_t)color;
+          cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
+          cubes[affectedCube].triggerStamp = millis();
+        }
+      }else if(command == 92){//Cubeoffverified
+        newLine = readChar();
+        if(newLine == '\n'){
+          cubes[affectedCube].cubeOffVerified = true;
+          cubes[affectedCube].setMyColor(0, 0, 0);
+        }
+      }else if(command == '['){//Recording started
+        newLine = readChar();
+        if(newLine == '\n'){
+          cubes[affectedCube].isWaitingToRecord = false;
+          cubes[affectedCube].isRecording = true; 
+          cubes[affectedCube].recordStamp = millis();
+        }
+      }else if(command == ']'){//Recording finished
+        newLine = readChar();
+        if(newLine == '\n'){
+          cubes[affectedCube].isRecording = false;  
+          cubes[affectedCube].setCubeColor(0,255,0); 
+          Cube_class::someCubeIsBusy = false;
+        }
+      }else if(command == '!'){//Recording timeout
+        newLine = readChar();
+        if(newLine == '\n'){
+          cubes[affectedCube].isWaitingToRecord = false;
+          cubes[affectedCube].isRecording = false;//Just in case!!
+          Cube_class::someCubeIsBusy = false;
+        }
+      }else if(command == '*'){//Copying confirmed
+        uint8_t affectedCube2 = readChar();
+        newLine = readChar();
+        if(newLine == '\n'){
+          cubes[affectedCube].setCopyingState(COPYINGCONFIRMED);
+          cubes[affectedCube2].setCopyingState(COPYINGCONFIRMED);
+          cubes[affectedCube2].recordStamp = millis(); //Update the stamp of the receiving cube
+        }
+        // sendStartRequest();
+      }else if(command == '?'){//Setting color
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy (copying)
+          return;
+        }
+        uint8_t effect = readChar();
+        newLine = readChar();
+        if(newLine == '\n'){
           uint32_t color = Wheel(effect);
           //Depack the colors
           int
@@ -213,56 +352,18 @@ void handleSerial(){
           b = (uint8_t)color;
           cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
           // cubes[affectedCube].setCubeColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
-          // Serial.print("Pitch color set for cube "); Serial.println(affectedCube);
         }
-      }else if(command == 't'){//Handshake
+      }else if(command == 't' || command == 'A'){//Handshake
         newLine == readChar();
           if(affectedCube == 'a' || affectedCube == 'A'){
-            sendMessage("a");
+            sendMessage("shake that ass!");
+            resetToInitState();
+            // Should we perhaps clear the serial buffer?
+            // Serial.clear();
           }
       }
     }
   }
-}
-
-void loop() {
-  if(SET_AMP_MODE){
-    set_amp();
-  }
-
-  handleSerial();
-
-
-
-  //Continuously dim the leds
-  for(int i = 0; i<NUMBEROFCUBES; i++){
-    cubes[i].fadeToMyColor(64);//parameter is speed. Lower is faster
-    cubes[i].strip.show();
-  }
-
-
-  //CHECK SENSORS!!!!
-  for (int i = 0; i < NUMBEROFCUBES; ++i)
-  {
-    // cubes[i].pullAnimation(DOWN);
-    if(DIAGNOSIS){
-      cubeDiagnosis(i);
-    }else if(PRINT_IR_INFO){
-      measureIR(i);  
-    }else{
-      readCube(i);  
-    }
-  }
-  // delay(3);
-
-
-  if(shouldSendStartRequest){
-    if(millis() > startRequestSendTime){
-      shouldSendStartRequest = false;
-      sendStartRequest();
-    }
-  }
-
 }
 
 void readCube(int i){
@@ -396,8 +497,8 @@ void readCube(int i){
   //   // cubes[i].copyRequestSent = false;
   // }
 
-  //Piezo stuff
-  //Should we record
+  // Piezo stuff
+  // Should we record?
   if(/// In some cases we don't want to record even if it's triggered.
       cubes[i].piezoTriggered(piezoThreshold)
       // &&  cubes[i].shaking()
@@ -408,6 +509,7 @@ void readCube(int i){
       // && !Cube_class::sharedIsWaitingToRecord
       // && !Cube_class::sharedIsRecording
       && !Cube_class::someCubeIsBusy
+      && millis() > 10000
       //TODO: Check if two piezo are triggered close in time. Then this means cubes are touching.
     ){
     cubes[i].isWaitingToRecord = true;
@@ -428,8 +530,8 @@ void readCube(int i){
 
 void cubeDiagnosis(int i){
   if(ACTIVATE_IR && cubes[i].irTriggered()){
-    int bbb = map(cubes[i].smoothedIrValue, 550, IRthreshold, 0, 6);
-    cubes[i].setCubeColor(Wheel(convertToByte(bbb, 0, 6)));
+    // int bbb = map(cubes[i].smoothedIrValue, 550, IRthreshold, 0, 6);
+    cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].scalePosition, 0, 5)));
     Serial.print("ir on ");
     Serial.print(i);
     // Serial.print(" is triggered with a scaleposition of ");
@@ -450,7 +552,8 @@ void cubeDiagnosis(int i){
 
     Serial.print("Cube ");
     Serial.print(i);
-    Serial.print(" is tapped");
+    Serial.print(" is tapped: ");
+    Serial.print(cubes[i].piezoDifference);
     if(cubes[i].getReedState(0) || cubes[i].getReedState(1)){
       cubes[i].setCubeColor(0,0,255); //Blue if reed is active during tap
       Serial.print(" but reed switch was active");
@@ -513,19 +616,49 @@ void cubeDiagnosis(int i){
 }
 
 void measureIR(int i){
+  // Serial.println(cubes[i].readIr());
+  // Serial.print(',');
+
+
   if(i == 0){
-    Serial.print("Raw IR reading ->    ");
+    // Serial.print("Raw IR reading ->    ");
   }
   
-  Serial.print(i);
-  Serial.print(": ");
+  // Serial.print(i);
+  // Serial.print(": ");
   Serial.print(cubes[i].readIr());
-  Serial.print('\t');
+  // Serial.print('\t');
+
+  Serial.print(',');
+
+
   if(i + 1 >= NUMBEROFCUBES ){
     Serial.println();
   }
 
 
+}
+
+void plotPiezos(){
+  for(int i = 0; i < NUMBEROFCUBES; i++){
+    
+    Serial.print(cubes[i].readPiezo());
+    Serial.print(",");
+  }
+  Serial.println();
+}
+
+void plotIr(){
+  for(int i = 0; i < NUMBEROFCUBES; i++){
+    
+    Serial.print(cubes[i].readIr());
+    if(i == NUMBEROFCUBES-1){
+      break;
+    }
+    Serial.print(",");
+  }
+  Serial.println();
+  delay(10);
 }
 
 void printNeighbours(){
@@ -664,6 +797,14 @@ void sendMessage(String msg){
   Serial.write('\n');
 }
 
+void dimLeds(int i){
+  // Continuously dim all the leds of this cube and show it.
+  // for(int i = 0; i<NUMBEROFCUBES; i++){
+    cubes[i].fadeToMyColor(64);//parameter is speed. Lower is faster
+    cubes[i].strip.show();
+  // }
+}
+
 //This function is untested. But probably works :-)
 void turnOffAllCubes(){
   // for(int i = 0; i<NUMBEROFCUBES*PIXELSPERCUBE; i++){
@@ -676,81 +817,38 @@ void turnOffAllCubes(){
   }
 }
 
-// void setCubeColor(int cubeNumber, uint32_t color){
-//   int firstPixel = cubeNumber*PIXELSPERCUBE;
-//   for(int i = firstPixel; i<firstPixel + PIXELSPERCUBE; i++){
-//     strip.setPixelColor(i, color);
-//   }
-//   // strip.show();
-// }
+void debugColorCycle(){
+  debugColorCycleProgress += 2;
+  if(debugColorCycleProgress >= 1000){
+    debugColorCycleProgress = 0;
 
-// void setCubeColor(int cubeNumber, uint8_t r, uint8_t g, uint8_t b){
-//   int firstPixel = cubeNumber*PIXELSPERCUBE;
-//   for(int i = firstPixel; i<firstPixel + PIXELSPERCUBE; i++){
-//     strip.setPixelColor(i, r, g, b);
-//   }
-//   // strip.show();
-// }
+    debugColorCycleCurrentColor++;
+    debugColorCycleCurrentColor %= 4;
+  }
 
-// void pushAnimation(int direction){
-//   strip.setPixelColor(7, 255,0,255);
-//   strip.show();
-//   for(int i; i < 200; i++){
-//     decreaseBrightness(7);
-//     strip.show();
-//     delay(30);
-//   }
-//   strip.setPixelColor(7, 255,0,0);
-//   strip.show();
-//   delay(1500);
-// }
+  for(int i = 0; i < NUMBEROFCUBES; i++){
+    if(debugColorCycleProgress < 200){
+      cubes[i].setCubeColor(0,0,0);
+    }else if(debugColorCycleProgress < 400){
+      cubes[i].setCubeColor(1,1,1);
+    }else if(debugColorCycleProgress < 800){
+      uint8_t intensity = map(debugColorCycleProgress, 600, 800, 1, 255);
+      cubes[i].setCubeColor(intensity, intensity, intensity);
+    }else{
+      cubes[i].setCubeColor(255, 255, 255);
+    }
 
-// void decreaseBrightness(int pixel){
-//   uint32_t color = strip.getPixelColor(pixel);
-      
-//       //Depack the colors
-//       int
-//       r = (uint8_t)(color >> 16),
-//       g = (uint8_t)(color >>  8),
-//       b = (uint8_t)color;
+    cubes[i].strip.show();
+  }
+}
 
-//       //Scale down colors
-//       r -= r/FADESPEED+2;
-//       if(r < 0)
-//         r = 0;
-//       g -= g/FADESPEED+2;
-//       if(g < 0)
-//         g = 0;
-//       b -= b/FADESPEED+2;
-//       if(b < 0)
-//         b = 0;
-      
-//       strip.setPixelColor(pixel, r, g, b);
-// }
-
-// void pullAnimation(int direction, int cubeNumber){//TODO: Make this animation beautiful
-//   int firstPixel = cubeNumber*PIXELSPERCUBE;
-//   int side1position, side2position;
-//   int offset = direction*2-1;
-//   unsigned int pixelChooser = firstPixel+(millis()/COPYSPEED)%PIXELSPERCUBE/2; // this value increases at an interval defined by COPYSPEED. It represents the state of the animation 
-//   // int colorChooser = (millis()/10)%255;
-  
-//   //Continuously dim pixels. This part updates every time the function is called
-//   for(int j=firstPixel; j < firstPixel + PIXELSPERCUBE; j++) {
-//       decreaseBrightness(j);
-//   }
-
-//   //Transform the chosen pixel to sidepositions. The following part moves the chosen pixel in intervals defined by #COPYSPEED
-//   side1position = (pixelChooser-offset)%PIXELSPERCUBE;
-//   side2position = ((PIXELSPERCUBE-pixelChooser)-1-offset)%PIXELSPERCUBE;
-
-//   //Highlight chosen pixel
-//   strip.setPixelColor(side1position, strip.Color(0, 0, 255));
-//   strip.setPixelColor(side2position, strip.Color(0, 0, 255));
-
-//   strip.show();
-  
-// }
+void resetToInitState(){
+  Cube_class::someCubeIsBusy = false;
+  for(int i = 0; i < NUMBEROFCUBES; i++){
+    cubes[i].init();
+  }
+  // turnOffAllCubes(); 
+}
 
 
 // UNTESTED!!!!!!!!!!!!!!!!!!!!!!!!
