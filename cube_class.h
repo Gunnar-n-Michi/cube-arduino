@@ -230,10 +230,10 @@ public:
 			delayMicroseconds(150);
 		}
 		_piezoRestDiff = maxDifference;
-		Serial.print("piezoRestDiff for cube ");
-		Serial.print(_cubeNumber);
-		Serial.print(" calculated to ");
-		Serial.println(maxDifference);
+		// Serial.print("piezoRestDiff for cube ");
+		// Serial.print(_cubeNumber);
+		// Serial.print(" calculated to ");
+		// Serial.println(maxDifference);
 	}
 
 	int readPiezo(){
@@ -510,12 +510,12 @@ public:
 
 			for(int i=0; i < 3; i++){
 				if(currentColor[i] > myColor[i]){
-					currentColor[i] -= currentColor[i]/fadeSpeed+2;
+					currentColor[i] -= currentColor[i]/fadeSpeed+1;
 					if(currentColor[i] < myColor[i]){//If we overshoot, then set it to target
 						currentColor[i] = myColor[i];
 					}
 				}else if(currentColor[i] < myColor[i]){
-					currentColor[i] += currentColor[i]/fadeSpeed+2;
+					currentColor[i] += currentColor[i]/fadeSpeed+1;
 					if(currentColor[i] > myColor[i]){//If we overshoot, then set it to target
 						currentColor[i] = myColor[i];
 					}
@@ -532,6 +532,7 @@ public:
 	void pullAnimation(int direction, int shift = 0){
 		
 		//Continuously dim pixels. This part updates every time the function is called
+		//This runs along the fade in the mainloop, which results in increased fadespeed during copying
 		fadeToMyColor(64);
 
 		int side1position, side2position;

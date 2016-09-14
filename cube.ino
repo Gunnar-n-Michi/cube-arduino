@@ -22,18 +22,18 @@
 
 #define ACTIVATE_IR true   //Applies to both diagnosis and normal mode
 
-#define DEBUG
+// #define DEBUG
 
 ///////////////////////////////////////////////////////////////////////////////////////////DON*T FORGET TO SET GRID SIZES!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 #define GRID_SIZE_X 2
-#define GRID_SIZE_Y 2
+#define GRID_SIZE_Y 4
 #define UP    1
 #define RIGHT 2
 #define DOWN  3
 #define LEFT  0
 
-#define REED1DIRECTION RIGHT
-#define REED2DIRECTION UP
+#define REED1DIRECTION UP
+#define REED2DIRECTION RIGHT
 
 #include <Adafruit_NeoPixel.h>//Order matters here. Since the arduino IDE (1.0.6) doesn't allow including libraries in libraries we have to include the neopixels here, before the cube_class.
 #include "cube_class.h"
@@ -41,7 +41,7 @@
 const int NUMBEROFCUBES = GRID_SIZE_X * GRID_SIZE_Y;
 const int NUMBEROFPIXELS = NUMBEROFCUBES * PIXELSPERCUBE;
 
-const int piezoThreshold = 400;
+const int piezoThreshold = 300;
 const int dimScaleFactor = 4;
 const int IRthreshold = 250;
 const int irMaxDistance = 60;
@@ -81,14 +81,14 @@ Cube_class cubes[] = {
   // Cube_class(6, A6, 32, 30, 28, 48, 60, true)
 
   //Shield layout!!!
-  // Cube_class(0, A8, A9, 13, 12, 6, 9, IRthreshold),
-  // Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
-  // Cube_class(2, A12, A13, 4, 3, 2, 17, IRthreshold),
-  // Cube_class(3, A14, A15, 15, 14, 16, 18, IRthreshold),
-  Cube_class(0, A0, A1, 24, 26, 53, 51, IRthreshold),
-  Cube_class(1, A2, A3, 30, 28, 40, 42, IRthreshold),
-  Cube_class(2, A4, A5, 38, 32, 34, 50, IRthreshold),
-  Cube_class(3, A6, A7, 48, 46, 52, 49, IRthreshold)
+  Cube_class(0, A8, A9, 13, 12, 6, 9, IRthreshold),
+  Cube_class(1, A10, A11, 11, 10, 7, 8, IRthreshold),
+  Cube_class(2, A12, A13, 3, 4, 2, 17, IRthreshold),
+  Cube_class(3, A14, A15, 14, 15, 16, 18, IRthreshold, false, 6),
+  Cube_class(4, A0, A1, 26, 24, 53, 51, IRthreshold),
+  Cube_class(5, A2, A3, 30, 28, 40, 42, IRthreshold),
+  Cube_class(6, A4, A5, 38, 32, 34, 50, IRthreshold),
+  Cube_class(7, A6, A7, 46, 48, 52, 49, IRthreshold)
 #endif
 };
 
@@ -99,6 +99,11 @@ int irReading = 0;
 char inByte;
 unsigned long startRequestSendTime;
 bool shouldSendStartRequest = false;
+bool handsShaked = false;
+unsigned long heartBeatInterval = 1000;
+unsigned long heartBeatStamp = 0;
+unsigned long dimmingInterval = 10;
+unsigned long dimmingStamp = 0;
 
 uint8_t rainbowCounter = 0;
 
@@ -127,22 +132,29 @@ void setup() {
       cubes[i].init();
     }
   }
-  delay(500);
+  // delay(500);
 
-  if(true || MODE){//Don't print if normal mode
-    sendMessage(F("Starting Musical Cubes Arduino Firmware.")); 
-  }else{
+  sendMessage(F("Starting Musical Cubes Arduino Firmware.")); 
+  if(MODE){//Don't print if normal mode
     // delay(2000);
-    // printNeighbours();
-   // showCalibrationValues();
+    printNeighbours();
+    // showCalibrationValues();
   }
 }
 void loop() {
 
-  if(MODE == SET_AMP_MODE){
-    set_amp();
+  // Establish communication
+  if(!handsShaked && MODE == NORMAL_MODE && millis() - heartBeatStamp >heartBeatInterval){
+    heartBeatStamp = millis();
+    sendMessage(F("a"));
+    handleSerial();
     return;
   }
+
+  // if(MODE == SET_AMP_MODE){
+  //   set_amp();
+  //   return;
+  // }
 
   if(MODE == FAKE_CUBES_MODE){
     fakeSerial();
@@ -160,11 +172,9 @@ void loop() {
         break;
       case NORMAL_MODE:
         readCube(i);
-        dimLeds(i);
         break;
       case DIAGNOSIS_MODE:
         cubeDiagnosis(i);
-        dimLeds(i);
         break;
       case PRINT_IR_INFO_MODE:
         measureIR(i);
@@ -186,6 +196,11 @@ void loop() {
     case PLOT_IR_WITH_RAINBOW_MODE:
       plotIr();
       debugColorCycle();
+      break;
+  }
+
+  if(MODE == NORMAL_MODE || MODE == DIAGNOSIS_MODE){
+    dimCubes();
   }
 
 
@@ -262,11 +277,12 @@ void fakeSerial(){
         newLine = readChar();
         if(newLine == '\n'){
         }
-      }else if(command == 't'){//Handshake
+      }else if(command == 't'){
         newLine == readChar();
+          //Handshake
           if(affectedCube == 'a' || affectedCube == 'A'){
-            sendMessage("a");
-            resetToInitState();
+            handsShaked = true;
+            // resetToInitState();
             // Should we perhaps clear the serial buffer?
             // Serial.clear();
           }
@@ -353,20 +369,39 @@ void handleSerial(){
           cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
           // cubes[affectedCube].setCubeColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
         }
-      }else if(command == 't' || command == 'A'){//Handshake
+      }else if(command == '$'){//Silent trigger of cube
+        if(Cube_class::someCubeIsBusy){//Don't do stuff when some cube is busy
+          return;
+        }
+        newLine = readChar();
+        if(newLine == '\n'){
+          // cubes[affectedCube].setCubeColor(color);
+          // Trigger white
+          cubes[affectedCube].setCubeColor(0,0,15);
+          // //Depack the colors
+          // int
+          // r = (uint8_t)(color >> 16),
+          // g = (uint8_t)(color >>  8),
+          // b = (uint8_t)color;
+          // cubes[affectedCube].setMyColor(r/dimScaleFactor, g/dimScaleFactor, b/dimScaleFactor);
+          // cubes[affectedCube].triggerStamp = millis();
+        }
+      }else if(command == 't'){
         newLine == readChar();
-          if(affectedCube == 'a' || affectedCube == 'A'){
-            sendMessage("shake that ass!");
-            resetToInitState();
-            // Should we perhaps clear the serial buffer?
-            // Serial.clear();
-          }
+        //Handshake
+        if(affectedCube == 'a' || affectedCube == 'A'){
+          handsShaked = true;
+          // resetToInitState();
+          // Should we perhaps clear the serial buffer?
+          // Serial.clear();
+        }
       }
     }
   }
 }
 
 void readCube(int i){
+  // sendMessage(F("reading cube"));
 
   if(ACTIVATE_IR){
     if(!Cube_class::someCubeIsBusy 
@@ -529,6 +564,8 @@ void readCube(int i){
 }
 
 void cubeDiagnosis(int i){
+  // sendMessage(F("diagnosing cube"));
+
   if(ACTIVATE_IR && cubes[i].irTriggered()){
     // int bbb = map(cubes[i].smoothedIrValue, 550, IRthreshold, 0, 6);
     cubes[i].setCubeColor(Wheel(convertToByte(cubes[i].scalePosition, 0, 5)));
@@ -575,43 +612,58 @@ void cubeDiagnosis(int i){
   // }
 
   cubes[i].updateReedStates();
+  int reedDirections[2] = {REED1DIRECTION, REED2DIRECTION};
   
-  int reed1 = cubes[i].getReedState(0);
-  if(reed1){
-    Serial.print("Reed 1 on cube ");
-    Serial.print(i);
-    Serial.print(" has state: ");
-    Serial.print(reed1);
-    Serial.print(" getCopypair returned: ");
-    int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-    getCopyPair(pair, i, REED1DIRECTION);
-    Serial.print(pair[0]);
-    Serial.println(pair[1]);
+  for(int reed = 0; reed < 2; reed++){
+    int STATE = cubes[i].getReedState(reed);
+    if(STATE){
+      int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
+      bool validPair = getCopyPair(pair, i, reedDirections[reed]);
+      if(STATE == REED_RISING){
+        Serial.print("Reed ");
+        Serial.print(reed+1);
+        Serial.print(" on cube ");
+        Serial.print(i);
+        Serial.print(" has state: ");
+        Serial.print(STATE);
+        Serial.print(" getCopypair returned: ");
+        Serial.print(pair[0]);
+        Serial.print(" -> ");
+        Serial.println(pair[1]);
+      }
 
-    // Serial.print(". Direction is RIGHT");
+      // Serial.print(". Direction is RIGHT");
 
-    //touchAnimation(pair[0], pair[1]);
-    cubes[pair[0]].pullAnimation(RIGHT);
-    cubes[pair[1]].pullAnimation(RIGHT);
+      //touchAnimation(pair[0], pair[1]);
+      if(validPair){
+        cubes[pair[0]].pullAnimation(reedDirections[reed]);
+        cubes[pair[1]].pullAnimation(reedDirections[reed]);
+      }else{
+        cubes[i].setCubeColor(255,255,255);
+      }
+    }
   }
-  int reed2 = cubes[i].getReedState(1);
-  if(reed2){
-    Serial.print("Reed 2 on cube ");
-    Serial.print(i);
-    Serial.print(" has state: ");
-    Serial.print(reed2);
-    Serial.print(" getCopypair returned: ");
-    int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
-    getCopyPair(pair, i, REED2DIRECTION);
-    Serial.print(pair[0]);
-    Serial.println(pair[1]);
+  // int reed2 = cubes[i].getReedState(1);
+  // if(reed2){
+  //   int pair[2]; // this pair will represent the indexes for the touching cubes for the rest of this loop
+  //   getCopyPair(pair, i, REED2DIRECTION);
+  //   if(reed2 == REED_RISING){
+  //     Serial.print("Reed 2 on cube ");
+  //     Serial.print(i);
+  //     Serial.print(" has state: ");
+  //     Serial.print(reed2);
+  //     Serial.print(" getCopypair returned: ");
+  //     Serial.print(pair[0]);
+  //     Serial.print(" -> ");
+  //     Serial.println(pair[1]);
+  //   }
 
-    // Serial.print(". Direction is UP");
+  //   // Serial.print(". Direction is UP");
 
-    cubes[pair[0]].pullAnimation(UP);
-    cubes[pair[1]].pullAnimation(UP);
-    //touchAnimation(pair[0], pair[1]);
-  }
+  //   cubes[pair[0]].pullAnimation(REED2DIRECTION);
+  //   cubes[pair[1]].pullAnimation(REED2DIRECTION);
+  //   //touchAnimation(pair[0], pair[1]);
+  // }
     
 }
 
@@ -720,10 +772,11 @@ bool getCopyPair(int pair[], int toucher, int direction){ // Different direction
     pair[1] = toucher;
     return true;
   }
-  // return pair;
+  return false;
 }
 
 void sendStartRequestIn(int duration){
+  sendMessage(F("sendStartRequestIn entered"));
   startRequestSendTime = millis() + duration;
   shouldSendStartRequest = true;
 }
@@ -795,14 +848,19 @@ void sendMessage(String msg){
   Serial.write('t');
   Serial.print(msg);
   Serial.write('\n');
+  return;
 }
 
-void dimLeds(int i){
+void dimCubes(){
   // Continuously dim all the leds of this cube and show it.
-  // for(int i = 0; i<NUMBEROFCUBES; i++){
-    cubes[i].fadeToMyColor(64);//parameter is speed. Lower is faster
-    cubes[i].strip.show();
-  // }
+  if(millis() - dimmingStamp > dimmingInterval){
+    dimmingStamp = millis();
+    for(int i = 0; i < NUMBEROFCUBES; i++){
+      cubes[i].fadeToMyColor(32);//parameter is speed. Lower is faster
+      cubes[i].strip.show();
+    }
+  }
+  return;
 }
 
 //This function is untested. But probably works :-)
